@@ -1,11 +1,14 @@
 const compression = require('compression');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const twig = require('twig');
 const auth = require('basic-auth');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const moment = require('moment');
 const OrderUtil = require('../utils/order_util');
+const { buildStatusAsync } = require('../eth_paper/ui_status');
 
 module.exports = class Http {
   constructor(systemUtil, ta, signalHttp, backtest, exchangeManager, pairsHttp, logsHttp, candleExportHttp, candleImporter, ordersHttp, tickers, projectDir) {
@@ -90,8 +93,224 @@ module.exports = class Http {
 
     const { ta } = this;
 
+    const getEthPaperStatus = async () => buildStatusAsync({ projectDir: this.projectDir });
+
+    // Helper to get bot status for ETH/BTC paper bots
+    const getPaperBotStatuses = async () => {
+      const fs = require('fs');
+      const path = require('path');
+      const bots = [];
+      
+      // Check for ETH bot
+      const ethEnvPath = path.join(this.projectDir, '.env');
+      if (fs.existsSync(ethEnvPath)) {
+        try {
+          const ethStatus = await buildStatusAsync({ projectDir: this.projectDir, envFile: '.env' });
+          if (ethStatus) {
+            bots.push({
+              label: 'ETH Paper',
+              asset: 'ETH',
+              mode: ethStatus.flags?.mode || 'PAPER',
+              price: ethStatus.derived?.price,
+              equityUsd: ethStatus.derived?.equityUsd,
+              openPosition: ethStatus.state?.openPosition,
+              unrealizedPnlUsd: ethStatus.derived?.unrealizedPnlUsd,
+              tradeStats: ethStatus.derived?.tradeStats || {}
+            });
+          }
+        } catch (e) {
+          console.log('ETH status error:', e.message);
+        }
+      }
+      
+      // Check for BTC bot
+      const btcEnvPath = path.join(this.projectDir, '.env.btc');
+      if (fs.existsSync(btcEnvPath)) {
+        try {
+          const btcStatus = await buildStatusAsync({ projectDir: this.projectDir, envFile: '.env.btc' });
+          if (btcStatus) {
+            bots.push({
+              label: 'BTC Paper',
+              asset: 'BTC',
+              mode: btcStatus.flags?.mode || 'PAPER',
+              price: btcStatus.derived?.price,
+              equityUsd: btcStatus.derived?.equityUsd,
+              openPosition: btcStatus.state?.openPosition,
+              unrealizedPnlUsd: btcStatus.derived?.unrealizedPnlUsd,
+              tradeStats: btcStatus.derived?.tradeStats || {}
+            });
+          }
+        } catch (e) {
+          console.log('BTC status error:', e.message);
+        }
+      }
+      
+      return bots;
+    };
+
+    const getTradesData = async () => {
+      const positions = [];
+      const orders = [];
+
+      const exchanges = this.exchangeManager.all();
+      for (const key in exchanges) {
+        const exchange = exchanges[key];
+
+        const exchangeName = exchange.getName();
+
+        const myPositions = await exchange.getPositions();
+        myPositions.forEach(position => {
+          // simply converting of asset to currency value
+          let currencyValue;
+          let currencyProfit;
+
+          if ((exchangeName.includes('bitmex') && ['XBTUSD', 'ETHUSD'].includes(position.symbol)) || exchangeName === 'bybit') {
+            // inverse exchanges
+            currencyValue = Math.abs(position.amount);
+          } else if (position.amount && position.entry) {
+            currencyValue = position.entry * Math.abs(position.amount);
+          }
+
+          positions.push({
+            exchange: exchangeName,
+            position: position,
+            currency: currencyValue,
+            currencyProfit: position.getProfit() ? currencyValue + (currencyValue / 100) * position.getProfit() : undefined
+          });
+        });
+
+        const myOrders = await exchange.getOrders();
+        myOrders.forEach(order => {
+          const items = {
+            exchange: exchange.getName(),
+            order: order
+          };
+
+          const ticker = this.tickers.get(exchange.getName(), order.symbol);
+          if (ticker) {
+            items.percent_to_price = OrderUtil.getPercentDifferent(order.price, ticker.bid);
+          }
+
+          orders.push(items);
+        });
+      }
+
+      return {
+        orders: orders.sort((a, b) => a.order.symbol.localeCompare(b.order.symbol)).slice(0, 10),
+        positions: positions.sort((a, b) => a.position.symbol.localeCompare(b.position.symbol)).slice(0, 10)
+      };
+    };
+
+    const getSignalsFromDb = () => {
+      try {
+        const Sqlite = require('better-sqlite3');
+        const dbPath = path.join(this.projectDir, 'bot.db');
+        if (!fs.existsSync(dbPath)) return [];
+        const db = Sqlite(dbPath);
+        const signals = db.prepare('SELECT * FROM signals ORDER BY income_at DESC LIMIT 20').all();
+        db.close();
+        return signals.map(s => ({
+          time: new Date(s.income_at * 1000),
+          symbol: s.symbol,
+          strategy: s.strategy,
+          signal: s.signal
+        }));
+      } catch (e) {
+        console.error('Error reading signals from DB:', e.message);
+        return [];
+      }
+    };
+
     app.get('/', async (req, res) => {
-      res.render('../templates/base.html.twig', await ta.getTaForPeriods(this.systemUtil.getConfig('dashboard.periods', ['15m', '1h'])));
+      const taData = await ta.getTaForPeriods(this.systemUtil.getConfig('dashboard.periods', ['15m', '1h']));
+      taData.botStatuses = await getPaperBotStatuses();
+
+      // Add dashboard sections data with error handling
+      try {
+        taData.recentTrades = await getTradesData();
+        console.log('Trades data loaded:', taData.recentTrades.positions.length, 'positions,', taData.recentTrades.orders.length, 'orders');
+      } catch (e) {
+        console.log('Error loading trades:', e.message);
+        taData.recentTrades = { positions: [], orders: [] };
+      }
+
+      try {
+        const signals = getSignalsFromDb();
+        taData.recentSignals = Array.isArray(signals) ? signals : [];
+        console.log('Signals loaded:', taData.recentSignals.length, 'signals');
+      } catch (e) {
+        console.log('Error loading signals:', e.message);
+        taData.recentSignals = [];
+      }
+
+      try {
+        const pairs = await this.pairsHttp.getTradePairs();
+        taData.pairs = Array.isArray(pairs) ? pairs : [];
+        console.log('Pairs loaded:', taData.pairs.length, 'pairs', JSON.stringify(taData.pairs.map(p => ({ symbol: p.symbol, exchange: p.exchange, trading: p.is_trading }))));
+      } catch (e) {
+        console.log('Error loading pairs:', e.message);
+        taData.pairs = [];
+      }
+
+      try {
+        taData.logs = await this.logsHttp.getLogsPageVariables(req, res);
+        console.log('Logs loaded:', taData.logs.logs ? taData.logs.logs.length : 0, 'log entries');
+      } catch (e) {
+        console.log('Error loading logs:', e.message);
+        taData.logs = { logs: [] };
+      }
+
+      res.render('../templates/base.html.twig', taData);
+    });
+
+    const periodToSeconds = period => {
+      const map = {
+        '1m': 60,
+        '5m': 300,
+        '15m': 900,
+        '30m': 1800,
+        '1h': 3600,
+        '2h': 7200,
+        '4h': 14400,
+        '1d': 86400
+      };
+
+      return map[period] || 60;
+    };
+
+    // API endpoint for recent candles (last 100 candles for live chart)
+    app.get('/api/candles/:symbol/:period', async (req, res) => {
+      try {
+        const { symbol, period } = req.params;
+        const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
+
+        // Resolve exchange for the requested symbol.
+        // NOTE: SystemUtil only holds conf.json, while instances come from instance.*.js.
+        // CandleExportHttp can list configured pairs via PairConfig.
+        let exchange = req.query.exchange;
+        if (!exchange) {
+          const pairs = await this.candleExportHttp.getPairs();
+          const match = (pairs || []).find(p => p.symbol === symbol);
+          exchange = match?.exchange;
+        }
+
+        if (!exchange) {
+          return res.status(404).json({
+            error: 'Symbol not found in configured pairs',
+            symbol
+          });
+        }
+        
+        // Get candles using candleExportHttp
+        const end = new Date();
+        const start = new Date(end.getTime() - limit * periodToSeconds(period) * 1000);
+        const candles = await this.candleExportHttp.getCandles(exchange, symbol, period, start, end);
+        
+        res.json(candles || []);
+      } catch (e) {
+        console.error('Error fetching candles:', e);
+        res.status(500).json({ error: e.message });
+      }
     });
 
     app.get('/backtest', async (req, res) => {
@@ -166,6 +385,17 @@ module.exports = class Http {
 
     app.get('/logs', async (req, res) => {
       res.render('../templates/logs.html.twig', await this.logsHttp.getLogsPageVariables(req, res));
+    });
+
+    // ETH paper trading status page (reads local state/log files)
+    app.get('/eth-paper', async (req, res) => {
+      res.render('../templates/eth_paper.html.twig', {
+        status: await getEthPaperStatus()
+      });
+    });
+
+    app.get('/api/eth-paper/status', async (req, res) => {
+      res.json(await getEthPaperStatus());
     });
 
     app.get('/desks/:desk', async (req, res) => {
@@ -406,7 +636,6 @@ module.exports = class Http {
    * eg:
    *  - binance_futures:BTCUSDT => binance:BTCUSDTPERP
    *  - binance_margin:BTCUSDT => binance:BTCUSDT
-   *  - coinbase_pro:BTC-USDT => coinbase:BTCUSDT
    *
    * @param symbol
    * @returns {string}
@@ -430,7 +659,6 @@ module.exports = class Http {
 
     return mySymbol
       .replace('-', '')
-      .replace('coinbase_pro', 'coinbase')
       .replace('binance_margin', 'binance')
       .replace('bybit_unified', 'bybit')
       .toUpperCase();

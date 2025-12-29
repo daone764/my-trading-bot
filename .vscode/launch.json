@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Bot: PAPER BTC (Coinbase)",
+      "cwd": "${workspaceFolder}/repo",
+      "program": "${workspaceFolder}/repo/index.js",
+      "args": ["trade", "--instance", "instance.paper.btc.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Bot: PAPER ETH (Coinbase)",
+      "cwd": "${workspaceFolder}/repo",
+      "program": "${workspaceFolder}/repo/index.js",
+      "args": ["trade", "--instance", "instance.paper.eth.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Bot: LIVE BTC (Coinbase)",
+      "cwd": "${workspaceFolder}/repo",
+      "program": "${workspaceFolder}/repo/index.js",
+      "args": ["trade", "--instance", "instance.live.btc.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Bot: LIVE ETH (Coinbase)",
+      "cwd": "${workspaceFolder}/repo",
+      "program": "${workspaceFolder}/repo/index.js",
+      "args": ["trade", "--instance", "instance.live.eth.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Server (Paper BTC instance)",
+      "cwd": "${workspaceFolder}/repo",
+      "program": "${workspaceFolder}/repo/index.js",
+      "args": ["server", "--instance", "instance.paper.btc.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}

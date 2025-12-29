@@ -1,11 +1,36 @@
 ./node_modules/
 ./idea/
 ./vscode/
+.DS_Store
 
-# Project config
+# Project config (sensitive data)
 conf.json
 instance.js
 bot.db
 bot.db-shm
 bot.db-wal
-./var/
+node_modules
+
+# Runtime state and process files
+var/*.pid
+var/*_state.json
+var/dca_purchase_history.json
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+eth.paper.env
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+temp_bot.sql
+_dashboard_log.txt
+*.tmp
+*.swp
+*~
+*.tgz
+*.tar.gz

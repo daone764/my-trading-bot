@@ -7,13 +7,110 @@
         <section class="content-header">
             <div class="container-fluid">
                 <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1>Dashboard</h1>
+                    <div class="col-sm-12">
+                        <h1>Unified Trading Dashboard</h1>
                     </div>
                 </div>
             </div><!-- /.container-fluid -->
         </section>
         <!-- /.Content Header (Page header) -->
+
+        <!-- Bot Status Cards (if available) -->
+        {% if botStatuses is defined and botStatuses|length > 0 %}
+        <section class="content">
+            <div class="container-fluid">
+                <div class="row">
+                    {% for bot in botStatuses %}
+                    <div class="col-lg-6 col-md-12">
+                        <div class="card card-widget widget-user-2">
+                            <div class="widget-user-header bg-gradient-primary">
+                                <div class="widget-user-image">
+                                    <i class="fas fa-robot fa-3x text-white"></i>
+                                </div>
+                                <h3 class="widget-user-username">{{ bot.label }} Trading Bot</h3>
+                                <h5 class="widget-user-desc">
+                                    {% if bot.mode == 'PAPER' %}
+                                        <span class="badge badge-light">Paper Mode</span>
+                                    {% else %}
+                                        <span class="badge badge-warning">Live Trading</span>
+                                    {% endif %}
+                                    <span class="ml-2">{{ bot.asset }}/USD</span>
+                                </h5>
+                            </div>
+                            <div class="card-footer p-0">
+                                <ul class="nav flex-column">
+                                    <li class="nav-item">
+                                        <span class="nav-link">
+                                            <i class="fas fa-dollar-sign text-primary"></i> Current Price 
+                                            <span class="float-right badge bg-primary">${{ bot.price|number_format(2) }}</span>
+                                        </span>
+                                    </li>
+                                    <li class="nav-item">
+                                        <span class="nav-link">
+                                            <i class="fas fa-wallet text-success"></i> Total Equity 
+                                            <span class="float-right badge bg-success">${{ bot.equityUsd|number_format(2) }}</span>
+                                        </span>
+                                    </li>
+                                    {% if bot.openPosition %}
+                                    <li class="nav-item">
+                                        <span class="nav-link">
+                                            <i class="fas fa-chart-line text-info"></i> Open Position 
+                                            <span class="float-right">
+                                                {{ bot.openPosition.qtyEth|number_format(6) }} @ ${{ bot.openPosition.entryPrice|number_format(2) }}
+                                                {% if bot.unrealizedPnlUsd %}
+                                                    <span class="badge {{ bot.unrealizedPnlUsd >= 0 ? 'bg-success' : 'bg-danger' }}">
+                                                        {{ bot.unrealizedPnlUsd >= 0 ? '+' : '' }}${{ bot.unrealizedPnlUsd|number_format(2) }}
+                                                    </span>
+                                                {% endif %}
+                                            </span>
+                                        </span>
+                                    </li>
+                                    {% endif %}
+                                    <li class="nav-item">
+                                        <span class="nav-link">
+                                            <i class="fas fa-chart-pie text-warning"></i> Performance 
+                                            <span class="float-right">
+                                                Win: {% if bot.tradeStats and bot.tradeStats.winRate %}{{ (bot.tradeStats.winRate * 100)|number_format(1) }}{% else %}N/A{% endif %}% |
+                                                Trades: {{ bot.tradeStats.sells|default(0) }} |
+                                                <span class="{% if bot.tradeStats and bot.tradeStats.realizedPnlUsd >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                    ${{ bot.tradeStats.realizedPnlUsd|default(0)|number_format(2) }}
+                                                </span>
+                                            </span>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Live Price Chart -->
+        <section class="content">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Live Price Chart - Last 15 Minutes</h3>
+                                <div class="card-tools">
+                                    <select id="chart-symbol" class="form-control form-control-sm" style="width: 150px;">
+                                        <option value="BTC-USD">BTC-USD</option>
+                                        <option value="ETH-USD">ETH-USD</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="liveChart" style="min-height: 180px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <!-- Main content -->
         <div class="content">
@@ -127,13 +224,355 @@
             </div><!-- /.container-fluid -->
         </div>
         <!-- /.content -->
+
+        <!-- Dashboard Sections -->
+        <section class="content">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-lg-6 col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Recent Trades</h3>
+                            </div>
+                            <div class="card-body table-responsive p-0">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Side</th>
+                                            <th>Amount</th>
+                                            <th>Price</th>
+                                            <th>Profit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for position in recentTrades.positions %}
+                                        <tr>
+                                            <td>{{ position.position.symbol }}</td>
+                                            <td>{{ position.position.side }}</td>
+                                            <td>{{ position.position.amount }}</td>
+                                            <td>${{ position.position.entry|number_format(2) }}</td>
+                                            <td class="{{ position.currencyProfit >= 0 ? 'text-success' : 'text-danger' }}">
+                                                ${{ position.currencyProfit|number_format(2) }}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if recentTrades.positions|length == 0 %}
+                                        <tr><td colspan="5" class="text-center text-muted">No open positions</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Open Orders</h3>
+                            </div>
+                            <div class="card-body table-responsive p-0">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Type</th>
+                                            <th>Side</th>
+                                            <th>Amount</th>
+                                            <th>Price</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for order in recentTrades.orders %}
+                                        <tr>
+                                            <td>{{ order.order.symbol }}</td>
+                                            <td>{{ order.order.type }}</td>
+                                            <td>{{ order.order.side }}</td>
+                                            <td>{{ order.order.amount }}</td>
+                                            <td>${{ order.order.price|number_format(2) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if recentTrades.orders|length == 0 %}
+                                        <tr><td colspan="5" class="text-center text-muted">No open orders</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-lg-6 col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Recent Signals</h3>
+                            </div>
+                            <div class="card-body table-responsive p-0">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Symbol</th>
+                                            <th>Strategy</th>
+                                            <th>Signal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for signal in recentSignals %}
+                                        <tr>
+                                            <td>{{ signal.time|date('H:i:s') }}</td>
+                                            <td>{{ signal.symbol }}</td>
+                                            <td>{{ signal.strategy }}</td>
+                                            <td>
+                                                <span class="badge {{ signal.signal == 'long' ? 'badge-success' : signal.signal == 'short' ? 'badge-danger' : 'badge-warning' }}">
+                                                    {{ signal.signal }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if recentSignals|length == 0 %}
+                                        <tr><td colspan="4" class="text-center text-muted">No recent signals</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Trading Pairs</h3>
+                            </div>
+                            <div class="card-body table-responsive p-0">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Exchange</th>
+                                            <th>Status</th>
+                                            <th>Position</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for pair in pairs %}
+                                        <tr>
+                                            <td>{{ pair.symbol }}</td>
+                                            <td>{{ pair.exchange }}</td>
+                                            <td>
+                                                <span class="badge {{ pair.is_trading ? 'badge-success' : 'badge-secondary' }}">
+                                                    {{ pair.is_trading ? 'Trading' : 'Watching' }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if pair.has_position %}
+                                                <span class="badge badge-info">Position</span>
+                                                {% else %}
+                                                <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card collapsed-card">
+                            <div class="card-header">
+                                <h3 class="card-title">Recent Logs</h3>
+                                <div class="card-tools">
+                                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" style="display: none;">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Level</th>
+                                            <th>Message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if logs is defined and logs.logs is defined %}
+                                        {% for log in logs.logs|slice(0, 20) %}
+                                        <tr>
+                                            <td>{{ log.created|date('H:i:s') }}</td>
+                                            <td>
+                                                <span class="badge {{ log.level == 'error' ? 'badge-danger' : log.level == 'warn' ? 'badge-warning' : 'badge-info' }}">
+                                                    {{ log.level }}
+                                                </span>
+                                            </td>
+                                            <td>{{ log.message }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% endif %}
+                                        {% if logs is not defined or logs.logs is not defined or logs.logs|length == 0 %}
+                                        <tr><td colspan="3" class="text-center text-muted">No logs</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </div>
 {% endblock content %}
 
 {% block javascript %}
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/techan.js/0.8.0/techan.min.js"></script>
 <script>
     $(function () {
-        $('[data-toggle="tooltip"]').tooltip()
-    })
+        $('[data-toggle="tooltip"]').tooltip();
+        
+        // Live Chart
+        let currentSymbol = 'BTC-USD';
+        const chartContainer = document.getElementById('liveChart');
+        
+        function renderChart(rawCandles) {
+            if (!rawCandles || rawCandles.length === 0) {
+                chartContainer.innerHTML = '<p class="text-center text-muted">No candle data available</p>';
+                return;
+            }
+            
+            // Clear previous chart
+            chartContainer.innerHTML = '';
+            
+            const containerWidth = $(chartContainer).width() || chartContainer.offsetWidth || 0;
+            if (containerWidth < 50) {
+                // Container not laid out yet (rare). Retry shortly.
+                setTimeout(() => renderChart(rawCandles), 250);
+                return;
+            }
+
+            // Convert API candles -> techan format
+            const accessor = techan.plot.candlestick().accessor();
+            const data = rawCandles
+                .map(d => ({
+                    date: new Date(Number(d.time) * 1000),
+                    open: Number(d.open),
+                    high: Number(d.high),
+                    low: Number(d.low),
+                    close: Number(d.close),
+                    volume: Number(d.volume)
+                }))
+                .filter(d => d.date instanceof Date && !isNaN(d.date))
+                .sort((a, b) => d3.ascending(accessor.d(a), accessor.d(b)));
+
+            if (data.length === 0) {
+                chartContainer.innerHTML = '<p class="text-center text-muted">No candle data available</p>';
+                return;
+            }
+
+            const dim = {
+                width: containerWidth,
+                height: 220,
+                margin: { top: 16, right: 60, bottom: 28, left: 60 },
+                ohlc: { height: 150 }
+            };
+
+            const plot = {
+                width: dim.width - dim.margin.left - dim.margin.right,
+                height: dim.height - dim.margin.top - dim.margin.bottom
+            };
+
+            const x = techan.scale.financetime().range([0, plot.width]);
+            const y = d3.scaleLinear().range([dim.ohlc.height, 0]);
+
+            const candlestick = techan.plot
+                .candlestick()
+                .xScale(x)
+                .yScale(y);
+
+            const xAxis = d3.axisBottom(x);
+            const yAxis = d3.axisRight(y);
+
+            const svg = d3
+                .select(chartContainer)
+                .append('svg')
+                .attr('width', dim.width)
+                .attr('height', dim.height);
+
+            const g = svg
+                .append('g')
+                .attr('transform', `translate(${dim.margin.left},${dim.margin.top})`);
+
+            g.append('g').attr('class', 'candlestick');
+            g.append('g').attr('class', 'x axis').attr('transform', `translate(0,${dim.ohlc.height})`);
+            g.append('g').attr('class', 'y axis').attr('transform', `translate(${plot.width},0)`);
+
+            x.domain(techan.scale.plot.time(data).domain());
+            y.domain(techan.scale.plot.ohlc(data.slice()).domain());
+
+            g.select('g.candlestick').datum(data).call(candlestick);
+            g.select('g.x.axis').call(xAxis);
+            g.select('g.y.axis').call(yAxis);
+        }
+        
+        function loadChart() {
+            // 1-minute candles; last ~15 minutes
+            fetch(`/api/candles/${currentSymbol}/1m?limit=15`)
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                })
+                .then(candles => {
+                    try {
+                        renderChart(candles);
+                    } catch (e) {
+                        console.error('Chart render failed:', e);
+                        chartContainer.innerHTML = `<p class="text-center text-danger">Failed to render chart</p>`;
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load chart:', err);
+                    chartContainer.innerHTML = `<p class="text-center text-danger">Failed to load chart data</p>`;
+                });
+        }
+        
+        // Symbol selector
+        document.getElementById('chart-symbol').addEventListener('change', function(e) {
+            currentSymbol = e.target.value;
+            loadChart();
+        });
+        
+        // Initial load
+        loadChart();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadChart, 30000);
+    });
 </script>
+<style>
+    .candlestick path.candle {
+        stroke: #000000;
+    }
+    .candlestick path.candle.body {
+        stroke-width: 0;
+    }
+    .candlestick path.candle.up {
+        fill: #26a69a;
+        stroke: #26a69a;
+    }
+    .candlestick path.candle.down {
+        fill: #ef5350;
+        stroke: #ef5350;
+    }
+    .x.axis text, .y.axis text {
+        font-size: 10px;
+    }
+    .axis path, .axis line {
+        fill: none;
+        stroke: #cccccc;
+        shape-rendering: crispEdges;
+    }
+</style>
 {% endblock javascript %}

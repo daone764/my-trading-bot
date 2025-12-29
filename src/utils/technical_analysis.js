@@ -1,4 +1,3 @@
-const tulind = require('tulind');
 const Indicators = require('./indicators');
 const IndicatorBuilder = require('../modules/strategy/dict/indicator_builder');
 

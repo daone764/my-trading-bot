@@ -1,10 +1,9 @@
 const assert = require('assert');
-const CoinbasePro = require('../../src/exchange/coinbase_pro');
+const Coinbase = require('../../src/exchange/coinbase');
 const Ticker = require('../../src/dict/ticker');
-const Order = require('../../src/dict/order');
 
-describe('#coinbase pro exchange implementation', function() {
-  it('profits are calculated', () => {
+describe('#coinbase exchange implementation (ccxt)', function () {
+  it('entry price is calculated from fills', () => {
     const fills = [
       {
         created_at: '2019-06-27T12:20:30.319Z',
@@ -30,14 +29,14 @@ describe('#coinbase pro exchange implementation', function() {
       }
     ];
 
-    const result = CoinbasePro.calculateEntryOnFills(fills, 5);
+    const result = Coinbase.calculateEntryOnFills(fills, 5);
 
     assert.equal(result.average_price.toFixed(2), 98.75);
     assert.equal(result.created_at.includes('2019'), true);
     assert.equal(result.size, 5);
   });
 
-  it('profits are calculated with out of time range for fills', () => {
+  it('entry price uses only in-range fills', () => {
     const fills = [
       {
         created_at: '2019-06-27T12:20:30.319Z',
@@ -56,15 +55,15 @@ describe('#coinbase pro exchange implementation', function() {
       }
     ];
 
-    const result = CoinbasePro.calculateEntryOnFills(fills, 5);
+    const result = Coinbase.calculateEntryOnFills(fills, 5);
 
     assert.equal(result.average_price.toFixed(2), 101.65);
     assert.equal(result.created_at.includes('2019'), true);
     assert.equal(result.size, 1);
   });
 
-  it('positions are given', async () => {
-    const coinbase = new CoinbasePro();
+  it('positions are given from balances + fills', async () => {
+    const coinbase = new Coinbase();
 
     coinbase.symbols = [
       {
@@ -75,10 +74,11 @@ describe('#coinbase pro exchange implementation', function() {
       }
     ];
 
+    // CCXT balances are typically per asset, e.g. "LTC".
     coinbase.balances = [
       {
         balance: 5,
-        currency: 'LTC-EUR'
+        currency: 'LTC'
       }
     ];
 
@@ -119,67 +119,10 @@ describe('#coinbase pro exchange implementation', function() {
     assert.equal(positions[0].createdAt instanceof Date, true);
   });
 
-  it('test placing order', async () => {
-    const coinbasePro = new CoinbasePro(undefined, {
-      error: () => {}
-    });
+  it('symbol mapping supports BTC-USD <-> BTC/USD', () => {
+    const coinbase = new Coinbase();
 
-    coinbasePro.client = {
-      placeOrder: async () => {
-        return {
-          status: 'open',
-          type: 'limit',
-          side: 'buy',
-          product_id: 'FOOBAR'
-        };
-      }
-    };
-
-    const order = await coinbasePro.order(Order.createMarketOrder('FOOBAR', 12));
-
-    assert.strictEqual(order.retry, false);
-    assert.strictEqual(order.status, 'open');
-    assert.strictEqual(order.symbol, 'FOOBAR');
-    assert.strictEqual(order.type, 'limit');
-  });
-
-  it('test placing order issues with rejection', async () => {
-    const coinbasePro = new CoinbasePro(undefined, {
-      error: () => {}
-    });
-
-    coinbasePro.client = {
-      placeOrder: async () => {
-        throw new Error('HTTP 400 Error: foobar');
-      }
-    };
-
-    const order = await coinbasePro.order(Order.createMarketOrder('FOOBAR', 12));
-
-    assert.strictEqual(order.retry, false);
-    assert.strictEqual(order.status, 'rejected');
-    assert.strictEqual(order.symbol, 'FOOBAR');
-    assert.strictEqual(order.amount, 12);
-    assert.strictEqual(order.type, 'market');
-  });
-
-  it('test placing order issues with rejection based on text', async () => {
-    const coinbasePro = new CoinbasePro(undefined, {
-      error: () => {}
-    });
-
-    coinbasePro.client = {
-      placeOrder: async () => {
-        throw new Error('HTTP 4xxx Error: size is too accurate');
-      }
-    };
-
-    const order = await coinbasePro.order(Order.createMarketOrder('FOOBAR', 12));
-
-    assert.strictEqual(order.retry, false);
-    assert.strictEqual(order.status, 'rejected');
-    assert.strictEqual(order.symbol, 'FOOBAR');
-    assert.strictEqual(order.amount, 12);
-    assert.strictEqual(order.type, 'market');
+    assert.equal(coinbase.toCcxtSymbol('BTC-USD'), 'BTC/USD');
+    assert.equal(coinbase.fromCcxtSymbol('BTC/USD'), 'BTC-USD');
   });
 });

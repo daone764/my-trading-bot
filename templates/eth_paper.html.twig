@@ -1,0 +1,209 @@
+{% extends 'layout.html.twig' %}
+
+{% block title %}ETH Paper | Crypto Bot{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <div class="content-header">
+    <div class="container">
+      <div class="row mb-2">
+        <div class="col-sm-6">
+          <h1 class="m-0">ETH Paper Trading</h1>
+        </div>
+        <div class="col-sm-6">
+          <ol class="breadcrumb float-sm-right">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active">ETH Paper</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="container">
+
+      {% set flags = status.flags %}
+      {% set env = status.env %}
+      {% set health = status.health %}
+      {% set state = status.state %}
+      {% set derived = status.derived %}
+      {% set files = status.files %}
+      {% set logTail = status.logTail %}
+
+      <div class="row">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Mode</h3>
+            </div>
+            <div class="card-body">
+              <div><strong>Mode:</strong> {{ flags.mode }}</div>
+              <div><strong>PAPER_TRADING:</strong> {{ flags.paperTrading is null ? 'unknown' : (flags.paperTrading ? 'true' : 'false') }}</div>
+              <div><strong>ENABLE_LIVE_TRADING:</strong> {{ flags.enableLiveTrading is null ? 'unknown' : (flags.enableLiveTrading ? 'true' : 'false') }}</div>
+              <div><strong>Next run:</strong> {{ env.nextRunAt is null ? 'unknown' : env.nextRunAt }}</div>
+              <div class="text-muted">Rendered at {{ status.now }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Health</h3>
+            </div>
+            <div class="card-body">
+              <div><strong>State file:</strong> {{ files.statePath }}</div>
+              <div><strong>Log file:</strong> {{ files.logPath }}</div>
+              <div><strong>Last tick:</strong> {{ health.lastTickAt is null ? 'never' : health.lastTickAt }}</div>
+              <div><strong>Age:</strong> {{ health.secondsSinceLastTick is null ? 'n/a' : health.secondsSinceLastTick ~ 's' }}{% if health.stale %} <span class="text-danger">(STALE)</span>{% endif %}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Market / Indicators</h3>
+            </div>
+            <div class="card-body">
+              {% if state is null or state.lastTick is null %}
+                <div class="text-muted">No lastTick data yet.</div>
+              {% else %}
+                <div><strong>Candle time:</strong> {{ state.lastTick.candleTime is null ? 'n/a' : state.lastTick.candleTime }}</div>
+                <div><strong>Close:</strong> {{ state.lastTick.close is null ? 'n/a' : (state.lastTick.close|price_format) }}</div>
+                <div><strong>EMA short:</strong> {{ state.lastTick.indicators.emaShort is null ? 'n/a' : (state.lastTick.indicators.emaShort|price_format) }}</div>
+                <div><strong>EMA long:</strong> {{ state.lastTick.indicators.emaLong is null ? 'n/a' : (state.lastTick.indicators.emaLong|price_format) }}</div>
+                <div><strong>RSI(14):</strong> {{ state.lastTick.indicators.rsi is null ? 'n/a' : state.lastTick.indicators.rsi }}</div>
+                <div><strong>Crossed up:</strong> {{ state.lastTick.signals.crossedUp is null ? 'n/a' : (state.lastTick.signals.crossedUp ? 'true' : 'false') }}</div>
+                <div><strong>RSI in band:</strong> {{ state.lastTick.signals.inRsiBand is null ? 'n/a' : (state.lastTick.signals.inRsiBand ? 'true' : 'false') }}</div>
+                <div><strong>Decision:</strong> {{ state.lastTick.decision.action is null ? 'n/a' : state.lastTick.decision.action }}{% if state.lastTick.decision.reason %} ({{ state.lastTick.decision.reason }}){% endif %}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Wallet / Performance</h3>
+            </div>
+            <div class="card-body">
+              {% if state is null %}
+                <div class="text-muted">No state loaded.</div>
+              {% else %}
+                <div><strong>Wallet source:</strong> {{ derived.walletSource is null ? 'n/a' : derived.walletSource }}</div>
+                <div><strong>Paper wallet USD:</strong> {{ state.wallet.usd }}</div>
+                <div><strong>Paper wallet ETH:</strong> {{ state.wallet.eth }}</div>
+                {% if flags.mode == 'PAPER' %}
+                  <div class="text-muted mt-1">In PAPER mode, this wallet is simulated and starts from TOTAL_CAPITAL_USD (default 100).</div>
+                {% endif %}
+                <div><strong>Price:</strong> {{ derived.price is null ? 'n/a' : (derived.price|price_format) }}</div>
+                <div><strong>Equity USD:</strong> {{ derived.equityUsd is null ? 'n/a' : (derived.equityUsd|price_format) }}</div>
+                <div><strong>Realized PnL USD:</strong> {{ derived.tradeStats.realizedPnlUsd|price_format }}</div>
+                <div><strong>Fees paid USD:</strong> {{ derived.tradeStats.feesPaidUsd|price_format }}</div>
+                <div><strong>Sells:</strong> {{ derived.tradeStats.sells }} | <strong>Win rate:</strong> {% if derived.tradeStats.winRate is null %}n/a{% else %}{{ (derived.tradeStats.winRate * 100)|round }}%{% endif %}</div>
+                <div class="mt-2"><strong>Last Weekly Summary At:</strong> {{ state.lastWeeklySummaryAt }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if derived.coinbaseBalances is defined and derived.coinbaseBalances is not null %}
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">Coinbase balances (read-only)</h3>
+              </div>
+              <div class="card-body">
+                {% if derived.coinbaseBalances.error is defined and derived.coinbaseBalances.error %}
+                  <div class="text-danger"><strong>Error:</strong> {{ derived.coinbaseBalances.error }}</div>
+                {% endif %}
+                <div><strong>Fetched at:</strong> {{ derived.coinbaseBalances.fetchedAt is null ? 'n/a' : derived.coinbaseBalances.fetchedAt }}</div>
+                <div><strong>Free USD:</strong> {{ derived.coinbaseBalances.free is defined and derived.coinbaseBalances.free.usd is not null ? derived.coinbaseBalances.free.usd : 'n/a' }}</div>
+                <div><strong>Free ETH:</strong> {{ derived.coinbaseBalances.free is defined and derived.coinbaseBalances.free.eth is not null ? derived.coinbaseBalances.free.eth : 'n/a' }}</div>
+                  <div class="text-muted mt-2">Shown automatically when <span class="mono">COINBASE_API_KEY</span> + <span class="mono">COINBASE_API_SECRET</span> exist. Disable by setting <span class="mono">SHOW_COINBASE_BALANCES=false</span>. This does not enable trading.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Position / Risk</h3>
+            </div>
+            <div class="card-body">
+              {% if state is null or state.openPosition is null %}
+                <div class="text-muted">No open position.</div>
+              {% else %}
+                <div><strong>Pair:</strong> {{ state.openPosition.pair }}</div>
+                <div><strong>Entry price:</strong> {{ state.openPosition.entryPrice|price_format }}</div>
+                <div><strong>Qty ETH:</strong> {{ state.openPosition.qtyEth }}</div>
+                <div><strong>Peak price:</strong> {{ state.openPosition.peakPrice|price_format }}</div>
+                <div><strong>Unrealized PnL USD:</strong> {{ derived.positionRisk.unrealizedPnlUsd is null ? 'n/a' : (derived.positionRisk.unrealizedPnlUsd|price_format) }}</div>
+                <div class="mt-2">
+                  <strong>Stop loss:</strong> {{ derived.positionRisk.stopLossPrice is null ? 'n/a' : (derived.positionRisk.stopLossPrice|price_format) }} |
+                  <strong>Take profit:</strong> {{ derived.positionRisk.takeProfitPrice is null ? 'n/a' : (derived.positionRisk.takeProfitPrice|price_format) }} |
+                  <strong>Trailing stop:</strong> {{ derived.positionRisk.trailingStopPrice is null ? 'n/a' : (derived.positionRisk.trailingStopPrice|price_format) }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Recent trades (last 10)</h3>
+            </div>
+            <div class="card-body">
+              {% if derived.recentTrades is empty %}
+                <div class="text-muted">No trades yet.</div>
+              {% else %}
+                <pre style="max-height: 360px; overflow: auto; white-space: pre-wrap;">{{ derived.recentTrades|format_json }}</pre>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Config snapshot (safe)</h3>
+            </div>
+            <div class="card-body">
+              <pre style="max-height: 360px; overflow: auto; white-space: pre-wrap;">{{ env.config|format_json }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Recent eth-paper log output</h3>
+            </div>
+            <div class="card-body">
+              <div class="text-muted mb-2">Tailing {{ files.logPath }}</div>
+              <pre style="max-height: 500px; overflow: auto; white-space: pre-wrap;">{{ logTail }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

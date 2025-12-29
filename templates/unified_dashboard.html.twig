@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unified Trading Dashboard</title>
+    <link rel="icon" href="/favicon.ico"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-blue: #58a6ff;
+            --accent-purple: #a371f7;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            grid-template-rows: auto 1fr auto;
+            gap: 1px;
+            background: var(--border-color);
+            min-height: 100vh;
+        }
+        
+        .header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header h1 i { color: var(--accent-yellow); }
+        
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 13px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .main-content {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chart-container {
+            flex: 1;
+            min-height: 500px;
+            position: relative;
+        }
+        
+        .chart-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        .sidebar {
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .panel {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .panel-header {
+            padding: 12px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .panel-content {
+            padding: 12px 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .bot-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .bot-card:last-child { margin-bottom: 0; }
+        
+        .bot-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .bot-name {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .bot-name .icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .bot-name .icon.btc { background: #f7931a; }
+        .bot-name .icon.eth { background: #627eea; }
+        
+        .mode-badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .mode-badge.paper { background: var(--accent-blue); color: white; }
+        .mode-badge.live { background: var(--accent-green); color: white; }
+        
+        .bot-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .stat-label { color: var(--text-muted); }
+        .stat-value { font-weight: 500; }
+        .stat-value.positive { color: var(--accent-green); }
+        .stat-value.negative { color: var(--accent-red); }
+        
+        .signal-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .signal-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        
+        .signal-type {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+        }
+        
+        .signal-type.long { background: var(--accent-green); color: white; }
+        .signal-type.short { background: var(--accent-red); color: white; }
+        .signal-type.close { background: var(--accent-yellow); color: black; }
+        
+        .signal-info { flex: 1; }
+        .signal-pair { font-weight: 500; }
+        .signal-strategy { color: var(--text-muted); }
+        .signal-time { color: var(--text-muted); font-size: 11px; }
+        
+        .logs-panel {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .logs-content {
+            flex: 1;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 11px;
+            padding: 12px;
+            background: var(--bg-primary);
+        }
+        
+        .log-line {
+            padding: 2px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .log-line.info { color: var(--text-secondary); }
+        .log-line.warn { color: var(--accent-yellow); }
+        .log-line.error { color: var(--accent-red); }
+        
+        .footer {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            padding: 8px 20px;
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .price-ticker {
+            display: flex;
+            gap: 24px;
+            padding: 10px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .ticker-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .ticker-symbol {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .ticker-price {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .ticker-change {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .ticker-change.up { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+        .ticker-change.down { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .tab-btn {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .tab-btn.active {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        
+        .empty-state i {
+            font-size: 32px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 1200px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                order: -1;
+                max-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <header class="header">
+            <h1><i class="fas fa-chart-line"></i> Unified Trading Dashboard</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-dot"></span>
+                    <span>Connected</span>
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-clock"></i>
+                    <span id="current-time">--:--:--</span>
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-memory"></i>
+                    <span id="memory-usage">--</span> MB
+                </div>
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <div class="price-ticker">
+                <div class="ticker-item">
+                    <span class="ticker-symbol">BTC/USD</span>
+                    <span class="ticker-price" id="btc-price">$--,---</span>
+                    <span class="ticker-change up" id="btc-change">+0.00%</span>
+                </div>
+                <div class="ticker-item">
+                    <span class="ticker-symbol">ETH/USD</span>
+                    <span class="ticker-price" id="eth-price">$--,---</span>
+                    <span class="ticker-change up" id="eth-change">+0.00%</span>
+                </div>
+            </div>
+            <div class="chart-container">
+                <!-- TradingView Widget -->
+                <div id="tradingview-widget"></div>
+            </div>
+        </main>
+        
+        <aside class="sidebar">
+            <div class="panel">
+                <div class="panel-header">
+                    <span><i class="fas fa-robot"></i> Active Bots</span>
+                </div>
+                <div class="panel-content" id="bots-container">
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Loading bots...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    <span><i class="fas fa-bell"></i> Recent Signals</span>
+                    <span id="signal-count">0</span>
+                </div>
+                <div class="panel-content" id="signals-container">
+                    <div class="empty-state">
+                        <i class="fas fa-bell-slash"></i>
+                        <p>No signals yet</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel logs-panel">
+                <div class="panel-header">
+                    <span><i class="fas fa-terminal"></i> Logs</span>
+                    <div class="tab-buttons">
+                        <button class="tab-btn active" data-log="main">Main</button>
+                        <button class="tab-btn" data-log="btc">BTC</button>
+                        <button class="tab-btn" data-log="eth">ETH</button>
+                    </div>
+                </div>
+                <div class="logs-content" id="logs-container">
+                    <div class="empty-state">
+                        <i class="fas fa-file-alt"></i>
+                        <p>No logs available</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <footer class="footer">
+            <span>Crypto Trading Bot - Unified Dashboard</span>
+            <span>Last update: <span id="last-update">--</span></span>
+        </footer>
+    </div>
+
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script>
+        // Initialize TradingView chart
+        new TradingView.widget({
+            "autosize": true,
+            "symbol": "COINBASE:BTCUSD",
+            "interval": "15",
+            "timezone": "America/New_York",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#161b22",
+            "enable_publishing": false,
+            "hide_side_toolbar": false,
+            "allow_symbol_change": true,
+            "watchlist": ["COINBASE:BTCUSD", "COINBASE:ETHUSD"],
+            "details": true,
+            "hotlist": true,
+            "calendar": false,
+            "container_id": "tradingview-widget"
+        });
+
+        // Dashboard state
+        let currentLogType = 'main';
+        
+        // Format time
+        function formatTime(date) {
+            return new Date(date).toLocaleTimeString('en-US', { hour12: false });
+        }
+        
+        // Format price
+        function formatPrice(price) {
+            if (!price || isNaN(price)) return '$--,---';
+            return new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: price < 10 ? 4 : 2
+            }).format(price);
+        }
+        
+        // Format relative time
+        function timeAgo(date) {
+            const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+            if (seconds < 60) return `${seconds}s ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
+        }
+
+        // Render bots
+        function renderBots(bots) {
+            const container = document.getElementById('bots-container');
+            
+            if (!bots || bots.length === 0) {
+                container.innerHTML = `
+                    <div class="bot-card">
+                        <div class="bot-header">
+                            <div class="bot-name">
+                                <span class="icon btc">₿</span>
+                                BTC Paper Bot
+                            </div>
+                            <span class="mode-badge paper">Paper</span>
+                        </div>
+                        <div class="bot-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Status</span>
+                                <span class="stat-value">Running</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Strategy</span>
+                                <span class="stat-value">CCI + MACD</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Pair</span>
+                                <span class="stat-value">BTC/USD</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Timeframe</span>
+                                <span class="stat-value">15m, 1h</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = bots.map(bot => `
+                <div class="bot-card">
+                    <div class="bot-header">
+                        <div class="bot-name">
+                            <span class="icon ${bot.pair.includes('BTC') ? 'btc' : 'eth'}">
+                                ${bot.pair.includes('BTC') ? '₿' : 'Ξ'}
+                            </span>
+                            ${bot.label}
+                        </div>
+                        <span class="mode-badge ${bot.mode.toLowerCase()}">${bot.mode}</span>
+                    </div>
+                    <div class="bot-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Pair</span>
+                            <span class="stat-value">${bot.pair}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">P&L</span>
+                            <span class="stat-value ${(bot.state?.wallet?.usd || 0) >= 100 ? 'positive' : 'negative'}">
+                                ${formatPrice(bot.state?.wallet?.usd || 0)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render signals
+        function renderSignals(signals) {
+            const container = document.getElementById('signals-container');
+            document.getElementById('signal-count').textContent = signals?.length || 0;
+            
+            if (!signals || signals.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-bell-slash"></i>
+                        <p>No signals yet - bot is watching for opportunities</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `<div class="signal-list">` + signals.slice(0, 10).map(signal => `
+                <div class="signal-item">
+                    <span class="signal-type ${signal.signal || 'close'}">${signal.signal || 'N/A'}</span>
+                    <div class="signal-info">
+                        <div class="signal-pair">${signal.exchange}:${signal.symbol}</div>
+                        <div class="signal-strategy">${signal.strategy || 'Unknown'} @ ${formatPrice(signal.price)}</div>
+                    </div>
+                    <span class="signal-time">${signal.income_at ? timeAgo(signal.income_at) : '--'}</span>
+                </div>
+            `).join('') + `</div>`;
+        }
+
+        // Render logs
+        function renderLogs(logText) {
+            const container = document.getElementById('logs-container');
+            
+            if (!logText) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-file-alt"></i>
+                        <p>No logs available</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const lines = logText.split('\n').filter(l => l.trim()).slice(-50);
+            container.innerHTML = lines.map(line => {
+                let cls = 'info';
+                if (line.includes('[ERROR]') || line.includes('error')) cls = 'error';
+                else if (line.includes('[WARN]') || line.includes('warn')) cls = 'warn';
+                return `<div class="log-line ${cls}">${line}</div>`;
+            }).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Update clock
+        function updateClock() {
+            document.getElementById('current-time').textContent = 
+                new Date().toLocaleTimeString('en-US', { hour12: false });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Fetch data from API
+        async function fetchData() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                renderBots(data.bots);
+                renderSignals(data.signals);
+                
+                document.getElementById('memory-usage').textContent = data.health?.memory || '--';
+                document.getElementById('last-update').textContent = formatTime(data.timestamp);
+                
+            } catch (err) {
+                console.error('Failed to fetch status:', err);
+            }
+        }
+
+        // Fetch logs
+        async function fetchLogs(type) {
+            try {
+                const res = await fetch(`/api/logs/file/${type}`);
+                const data = await res.json();
+                renderLogs(data.log);
+            } catch (err) {
+                console.error('Failed to fetch logs:', err);
+            }
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentLogType = btn.dataset.log;
+                fetchLogs(currentLogType);
+            });
+        });
+
+        // Initial fetch and polling
+        fetchData();
+        fetchLogs(currentLogType);
+        
+        setInterval(fetchData, 10000);  // Update every 10 seconds
+        setInterval(() => fetchLogs(currentLogType), 15000);  // Update logs every 15 seconds
+    </script>
+</body>
+</html>

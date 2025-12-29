@@ -4,7 +4,6 @@ const events = require('events');
 const { createLogger, transports, format } = require('winston');
 
 const _ = require('lodash');
-const Sqlite = require('better-sqlite3');
 const Notify = require('../notify/notify');
 const Slack = require('../notify/slack');
 const Mail = require('../notify/mail');
@@ -59,7 +58,7 @@ const Binance = require('../exchange/binance');
 const BinanceMargin = require('../exchange/binance_margin');
 const BinanceFutures = require('../exchange/binance_futures');
 const BinanceFuturesCoin = require('../exchange/binance_futures_coin');
-const CoinbasePro = require('../exchange/coinbase_pro');
+const Coinbase = require('../exchange/coinbase');
 const Bitfinex = require('../exchange/bitfinex');
 const Bybit = require('../exchange/bybit');
 const BybitUnified = require('../exchange/bybit_unified');
@@ -124,13 +123,28 @@ let throttler;
 const parameters = {};
 
 module.exports = {
-  boot: async function(projectDir) {
+  boot: async function(projectDir, bootOptions = {}) {
     parameters.projectDir = projectDir;
 
+    const instanceFile =
+      bootOptions.instanceFile ||
+      process.env.INSTANCE_FILE ||
+      process.env.INSTANCE ||
+      'instance';
+
+    parameters.instanceFile = instanceFile;
+
+    // Resolve instance file relative to projectDir unless absolute.
+    const resolvedInstanceFile = require('path').isAbsolute(instanceFile)
+      ? instanceFile
+      : `${parameters.projectDir}/${instanceFile}`;
+
     try {
-      instances = require(`${parameters.projectDir}/instance`);
+      instances = require(resolvedInstanceFile);
     } catch (e) {
-      throw new Error(`Invalid instance.js file. Please check: ${String(e)}`);
+      throw new Error(
+        `Invalid instance file ("${instanceFile}") resolved to "${resolvedInstanceFile}". Please check: ${String(e)}`
+      );
     }
 
     // boot instance eg to load pairs external
@@ -152,7 +166,39 @@ module.exports = {
       return db;
     }
 
-    const myDb = Sqlite('bot.db');
+    let Sqlite;
+    try {
+      Sqlite = require('better-sqlite3');
+    } catch (e) {
+      // better-sqlite3 is a native addon; Node versions without a prebuilt binary will fail here.
+      // Provide a helpful message for local dev (especially Windows).
+      throw new Error(
+        [
+          'Failed to load better-sqlite3 native bindings.',
+          `Node version: ${process.version}`,
+          'Fix: use an LTS Node version supported by better-sqlite3 (recommended: Node 20.x), then reinstall dependencies:',
+          '  - Install/switch Node 20 (e.g. via nvm-windows)',
+          '  - From repo/: npm install',
+          `Original error: ${String(e)}`
+        ].join('\n')
+      );
+    }
+
+    let myDb;
+    try {
+      myDb = Sqlite('bot.db');
+    } catch (e) {
+      throw new Error(
+        [
+          'Failed to open SQLite database via better-sqlite3 (native bindings issue).',
+          `Node version: ${process.version}`,
+          'Fix: use an LTS Node version supported by better-sqlite3 (recommended: Node 20.x) and reinstall dependencies:',
+          '  - Install/switch Node 20 (e.g. via nvm-windows)',
+          '  - From repo/: npm install',
+          `Original error: ${String(e)}`
+        ].join('\n')
+      );
+    }
     myDb.pragma('journal_mode = WAL');
 
     myDb.pragma('SYNCHRONOUS = 1;');
@@ -664,7 +710,7 @@ module.exports = {
         this.getCandleImporter(),
         this.getThrottler()
       ),
-      new CoinbasePro(
+      new Coinbase(
         this.getEventEmitter(),
         this.getLogger(),
         this.getCandlestickResample(),

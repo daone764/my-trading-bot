@@ -2,38 +2,37 @@
 
 [![Build Status](https://github.com/Haehnchen/crypto-trading-bot/actions/workflows/node.js.yml/badge.svg)](https://github.com/Haehnchen/crypto-trading-bot/actions/workflows/node.js.yml)
 
-A **work in progress** Cryptocurrency for common exchanges like Bitfinex, Bitmex and Binance.
-As most trading bots just provide basic buy and sell signals they provide many stuff to get profitable eg exchange orders like stop-losses or stop-limits are not supported by main bots. Also the limitation of fixed timeframe and technical indicators must be broken
+This workspace is a customized setup of the upstream trading bot, focused on **Coinbase (US-friendly) via CCXT**.
 
-**Not production ready** only basic functionality
+- Main bot: `node index.js trade` using instance presets (BTC-only / ETH-only, paper/live)
+- ETH paper bot: `node index.js eth-paper` (EMA crossover + RSI, scheduled)
+- Local UI: web dashboard + ETH paper status page
+
+Not financial advice. Crypto trading is risky and you can lose money.
 
 ## Features
 
-- Fully use Websocket for exchange communication to react as fast as possible on market
+- Market data + trading via exchange adapters (Coinbase uses CCXT)
 - Multi pair support in one instance
 - sqlite3 storage for candles, tickers, ...
 - Webserver UI
-- Support for going "Short" and "Long"
+- Strategies + order/risk tooling (stoploss / take-profit / trailing, depending on exchange support)
 - Signal browser dashboard for pairs
 - Slack and email notification
-- Join foreign exchange candles (eg. Trade on Bitmex with the faster moving Binance trades / candles)
 
-### Exchanges
+### Exchange support in THIS workspace
 
-- [Bitmex](https://www.bitmex.com/register/jS4mLN) with leverage configuration
-- [Bitmex Testnet](https://www.bitmex.com/register/jS4mLN)
-- [Binance](https://www.binance.com/?ref=17569916)
-- [Binance Margin](https://www.binance.com/?ref=17569916)
-- [Binance Futures](https://www.binance.com/en/futures/ref/302644)
-- [Coinbase Pro](https://www.coinbase.com/join/5a2ae60e76531100d3af2ee5)
-- [Bitfinex](https://www.bitfinex.com/?refcode=kDLceRHa) (margin wallet)
-- [Bybit](https://www.bybit.com/app/register?ref=46AK7)
-  - [USDT Perpetual Futures (v2) APIs](https://bybit-exchange.github.io/docs/futuresV2/linear/#t-introduction)
-  - [Inverse Perpetual Futures (v2) APIs](https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-introduction) 
-  
-TODOS:
+This workspace is configured and documented for **Coinbase**.
 
-- [Huobi Global](https://www.hbg.com/) (margin)
+- Use `exchange: 'coinbase'` in instance configs
+- Credentials live in `conf.json` under `exchanges.coinbase.key` / `exchanges.coinbase.secret`
+
+Other exchanges may exist in the upstream codebase, but are not the focus here and may be restricted depending on your jurisdiction (e.g., Binance in the US).
+
+### Other exchanges (upstream / not our focus)
+
+The underlying project contains adapters for other exchanges (BitMEX, Binance variants, Bybit, etc.).
+This workspace does **not** aim to provide US-compliance guidance or guarantee availability.
 
 ## Technical stuff and packages
 
@@ -48,6 +47,33 @@ TODOS:
 - Tradingview widgets
 
 ## How to use
+
+### Recommended Node version (Windows/VS Code)
+
+This project uses `better-sqlite3` (native SQLite bindings). For the smoothest local dev experience on Windows, use **Node 20 LTS**.
+
+- Recommended: Node **20.x** (see [.nvmrc](.nvmrc))
+- If you change Node versions, reinstall dependencies in `repo/` (`npm install`).
+
+### Quickstart (VS Code)
+
+This repo supports selecting an instance config at runtime.
+
+- Paper (signals only):
+  - `npm run trade:paper:btc`
+  - `npm run trade:paper:eth`
+- Live (places real orders, Coinbase keys required):
+  - `npm run trade:live:btc`
+  - `npm run trade:live:eth`
+
+Or via CLI:
+
+```
+node index.js trade --instance instance.paper.btc.js
+node index.js trade --instance instance.live.eth.js
+```
+
+VS Code debug launchers are provided in [.vscode/launch.json](.vscode/launch.json).
 
 ### [optional] Preinstall
 
@@ -76,11 +102,22 @@ Create instance file for pairs and changes
 cp instance.js.dist instance.js
 ```
 
+You can also use the provided presets instead of editing `instance.js`:
+
+- Paper presets: `instance.paper.btc.js`, `instance.paper.eth.js`
+- Live presets: `instance.live.btc.js`, `instance.live.eth.js`
+
 Provide a configuration with your exchange credentials
 
 ```
 cp conf.json.dist conf.json
 ```
+
+For Coinbase (Advanced Trade via CCXT), put credentials here:
+
+- `conf.json` → `exchanges.coinbase.key` / `exchanges.coinbase.secret`
+
+See [COINBASE_SETUP.md](COINBASE_SETUP.md).
 
 Create a new sqlite database use bot.sql scheme to create the tables
 
@@ -93,6 +130,37 @@ Lets start it
 ```
 npm start
 ```
+
+### Coinbase
+
+Coinbase is supported via **CCXT** (`exchange: 'coinbase'`). Legacy Coinbase Pro is deprecated and is not used.
+
+### ETH paper bot (EMA crossover + RSI)
+
+This repo includes a separate lightweight ETH/USD paper-trading bot.
+
+- Run once:
+
+```
+node index.js eth-paper --env .env --once
+```
+
+- Run scheduled (every 15 minutes by default):
+
+```
+node index.js eth-paper --env .env
+```
+
+- Local UI (reads local state/log files):
+
+```
+node index.js eth-paper-ui --port 8081
+```
+
+Notes:
+
+- The ETH paper bot evaluates the latest **completed candle(s)** on its schedule.
+- Log timestamps show both UTC and local time (default `America/New_York`). Override with `LOG_TIMEZONE`.
 
 ## How to use: Docker
 
@@ -228,8 +296,8 @@ var/strategies/subfolder1/our_strategy/our_strategy.js
 
 - `stoploss` provide general stoploss order in percent of entry price (Exchange Order)
 - `risk_reward_ratio` Creates Risk Reward order for take profit and stoploss (Exchange Order Limit+Stop)
-- `stoploss_watch` Close open position if ticker price falls below the percent lose; use this for exchange that dont support stop_loss order liek Binance
-- `trailing_stop` Use native exchange trailing stop; if supported by exchange eg `Bitfinex`
+- `stoploss_watch` Close open position if ticker price falls below the stop percent; use this for exchanges that don't support native stop-loss order types
+- `trailing_stop` Use native exchange trailing stop (if supported by the exchange)
 
 ```
     'watchdogs': [
@@ -288,12 +356,12 @@ You should only provide one of them, first wins.
 
 ```
     c.symbols.push({
-        'symbol': 'BTC-EUR',
-        'exchange': 'coinbase_pro',
+    'symbol': 'BTC-USD',
+        'exchange': 'coinbase',
         'trade': {
             'capital': 0.015, // this will buy 0.015 BTC
-            'currency_capital': 50,  // this will use 50 EUR and buys the equal amount of BTC (example: BTC price 3000 use 50 EUR. will result in 0.016 BTC)
-            'balance_percent': 75,  // this will use 75 % of your exchange margin tradable balance. Currently implemented only on Bitfinex exchange.
+      'currency_capital': 50,  // this will use 50 USD and buys the equal amount of BTC
+      'balance_percent': 75,  // this will use 75% of your exchange tradable balance (if supported by the exchange adapter)
         },
     })
 ```
@@ -322,8 +390,8 @@ Inside logs, visible via browser ui, you can double check the strategies init pr
 
 ```
 [info] Starting strategy intervals
-[info] "binance_futures" - "ETHUSDT" - "trade" - init strategy "dip_catcher" (15m) in 11.628 minutes
-[info] "binance_futures" - "BTCUSDT" - "trade" first strategy run "dip_catcher" now every 15.00 minutes
+[info] "coinbase" - "ETH-USD" - "trade" - init strategy "dip_catcher" (15m) in 11.628 minutes
+[info] "coinbase" - "BTC-USD" - "trade" first strategy run "dip_catcher" now every 15.00 minutes
 ```
 
 ### Full Trade Example
@@ -335,11 +403,11 @@ const c = (module.exports = {});
 
 c.symbols = [
   {
-    symbol: 'ETHUSDT',
-    exchange: 'binance_futures',
+    symbol: 'ETH-USD',
+    exchange: 'coinbase',
     periods: ['1m', '15m', '1h'],
     trade: {
-      currency_capital: 10,
+      currency_capital: 100,
       strategies: [
         {
           strategy: 'dip_catcher',
@@ -363,25 +431,8 @@ c.symbols = [
 
 ### Margin / Leverage
 
-Per pair you can set used margin before orders are created; depending on exchange
-
-```
-    c.symbols.push({
-        'symbol': 'BTCUSD',
-        'exchange': 'bitmex',
-        'extra': {
-            'bitmex_leverage': 5,
-        },
-    })
-
-    c.symbols.push({
-        'symbol': 'EOSUSD',
-        'exchange': 'bybit',
-        'extra': {
-            'bybit_leverage': 5,
-        },
-    })
-```
+Coinbase spot trading does not use margin/leverage in this workspace configuration.
+The upstream project may include leverage configuration for derivatives exchanges.
 
 ## Tools
 
@@ -390,7 +441,7 @@ Per pair you can set used margin before orders are created; depending on exchang
 _outdated_, but there as an automatic filling on startup ~1000 candles from the past (depending on exchange) and continuously fetched when running
 
 ```
-node index.js backfill -e bitmex -p 1m -s XRPZ18
+node index.js backfill -e coinbase -p 1m -s BTC-USD
 ```
 
 ## Signals

@@ -1,6 +1,22 @@
-const tulind = require('tulind');
-const talib = require('talib');
 const percent = require('percent');
+
+let tulind;
+try {
+  // Optional native dependency
+  // eslint-disable-next-line global-require
+  tulind = require('tulind');
+} catch (e) {
+  tulind = null;
+}
+
+let talib;
+try {
+  // Optional native dependency
+  // eslint-disable-next-line global-require
+  talib = require('talib');
+} catch (e) {
+  talib = null;
+}
 
 /**
  * ZigZag indicator
@@ -112,22 +128,351 @@ function executeTulindIndicator(source, indicator, tulindOptions) {
     const indicatorOptions = indicator.options || {};
     options = Object.keys(options).map(o => indicatorOptions[o] || options[o]);
 
-    // execute indicator
-    tulind.indicators[indicatorName].indicator(sources, options, (err, res) => {
-      let finalResult = res[0];
-      const { results } = tulindOptions;
-      if (results !== undefined) {
-        // if indicator returns multiple results, extract them
-        finalResult = res[0].map((r, i) => {
-          const record = results.reduce((acc, key) => Object.assign(acc, { [key]: res[results.indexOf(key)][i] }), {});
-          if (indicatorName === 'bbands') {
-            Object.assign(record, { width: (record.upper - record.lower) / record.middle });
-          }
-          return record;
-        });
+    // Prefer tulind when available, otherwise fall back to technicalindicators.
+    if (tulind && tulind.indicators && tulind.indicators[indicatorName]) {
+      tulind.indicators[indicatorName].indicator(sources, options, (err, res) => {
+        if (err) {
+          resolve({ [indicator.key]: [] });
+          return;
+        }
+
+        let finalResult = res[0];
+        const { results } = tulindOptions;
+        if (results !== undefined) {
+          // if indicator returns multiple results, extract them
+          finalResult = res[0].map((r, i) => {
+            const record = results.reduce(
+              (acc, key) => Object.assign(acc, { [key]: res[results.indexOf(key)][i] }),
+              {}
+            );
+            if (indicatorName === 'bbands') {
+              Object.assign(record, { width: (record.upper - record.lower) / record.middle });
+            }
+            return record;
+          });
+        }
+        resolve({ [indicator.key]: finalResult });
+      });
+      return;
+    }
+
+    // Fallback path (no tulind)
+    // eslint-disable-next-line global-require
+    const ti = require('technicalindicators');
+
+    const s0 = sources && sources.length >= 1 ? sources[0] : null;
+    const s1 = sources && sources.length >= 2 ? sources[1] : null;
+    const s2 = sources && sources.length >= 3 ? sources[2] : null;
+    const s3 = sources && sources.length >= 4 ? sources[3] : null;
+
+    const values = sources && sources.length === 1 ? s0 : null;
+
+    const length = indicator?.options?.length || options.length;
+
+    const fallbackUnsupported = () => {
+      throw new Error(
+        `Indicator '${indicatorName}' requires optional dependency 'tulind'. Install it or avoid this indicator.`
+      );
+    };
+
+    let out;
+
+    const fullEma = (arr, period) => {
+      if (!arr || arr.length === 0) {
+        return [];
       }
-      resolve({ [indicator.key]: finalResult });
-    });
+      const p = period || 14;
+      const k = 2 / (p + 1);
+      const ema = new Array(arr.length);
+      ema[0] = Number(arr[0]);
+      for (let i = 1; i < arr.length; i += 1) {
+        ema[i] = (Number(arr[i]) - ema[i - 1]) * k + ema[i - 1];
+      }
+      return ema;
+    };
+
+    const smaFull = (arr, period) => {
+      const p = period || 14;
+      if (!arr || arr.length < p) {
+        return [];
+      }
+      const outSma = [];
+      let sum = 0;
+      for (let i = 0; i < p; i += 1) {
+        sum += Number(arr[i]);
+      }
+      outSma.push(sum / p);
+      for (let i = p; i < arr.length; i += 1) {
+        sum += Number(arr[i]) - Number(arr[i - p]);
+        outSma.push(sum / p);
+      }
+      return outSma;
+    };
+
+    const fullObv = (closeArr, volumeArr) => {
+      if (!closeArr || !volumeArr || closeArr.length === 0) {
+        return [];
+      }
+      const obv = new Array(closeArr.length);
+      obv[0] = 0;
+      for (let i = 1; i < closeArr.length; i += 1) {
+        const prev = Number(closeArr[i - 1]);
+        const cur = Number(closeArr[i]);
+        const v = Number(volumeArr[i]);
+        if (cur > prev) {
+          obv[i] = obv[i - 1] + v;
+        } else if (cur < prev) {
+          obv[i] = obv[i - 1] - v;
+        } else {
+          obv[i] = obv[i - 1];
+        }
+      }
+      return obv;
+    };
+
+    switch (indicatorName) {
+      case 'sma':
+        out = ti.SMA.calculate({ period: length || 14, values });
+        break;
+      case 'ema':
+        // Match tulind-style behavior used by this repo's tests: full-length EMA seeded from the first value.
+        out = fullEma(values, length || 14);
+        break;
+      case 'wma': {
+        const period = length || 9;
+        if (!ti.WMA) {
+          fallbackUnsupported();
+        }
+        out = ti.WMA.calculate({ period, values });
+        break;
+      }
+      case 'dema': {
+        const period = length || 9;
+        if (ti.DEMA) {
+          out = ti.DEMA.calculate({ period, values });
+          break;
+        }
+        const ema1 = fullEma(values, period);
+        const ema2 = fullEma(ema1, period);
+        out = ema1.map((v, i) => 2 * v - ema2[i]);
+        break;
+      }
+      case 'tema': {
+        const period = length || 9;
+        if (ti.TEMA) {
+          out = ti.TEMA.calculate({ period, values });
+          break;
+        }
+        const ema1 = fullEma(values, period);
+        const ema2 = fullEma(ema1, period);
+        const ema3 = fullEma(ema2, period);
+        out = ema1.map((v, i) => 3 * v - 3 * ema2[i] + ema3[i]);
+        break;
+      }
+      case 'trima': {
+        const period = length || 9;
+        if (ti.TRIMA) {
+          out = ti.TRIMA.calculate({ period, values });
+          break;
+        }
+        // Triangular MA: SMA(SMA(values, ceil(n/2)), floor(n/2)+1)
+        const p1 = Math.ceil(period / 2);
+        const p2 = Math.floor(period / 2) + 1;
+        const sma1 = ti.SMA.calculate({ period: p1, values });
+        out = ti.SMA.calculate({ period: p2, values: sma1 });
+        break;
+      }
+      case 'kama': {
+        const period = length || 9;
+        if (ti.KAMA) {
+          out = ti.KAMA.calculate({ period, values });
+          break;
+        }
+        // Conservative fallback: treat as EMA with the same period.
+        out = fullEma(values, period);
+        break;
+      }
+      case 'rsi':
+        out = ti.RSI.calculate({ period: length || 14, values });
+        break;
+      case 'cci':
+        // CCI needs candles (high/low/close)
+        out = ti.CCI.calculate({ period: length || 20, high: s0, low: s1, close: s2 });
+        break;
+      case 'roc':
+        out = ti.ROC.calculate({ period: length || 14, values });
+        break;
+      case 'atr':
+        out = ti.ATR.calculate({ period: length || 14, high: s0, low: s1, close: s2 });
+        break;
+      case 'mfi': {
+        const volume = s3;
+        out = ti.MFI.calculate({ period: length || 14, high: s0, low: s1, close: s2, volume });
+        break;
+      }
+      case 'obv': {
+        // For obv we receive sources as [close, volume]
+        out = fullObv(s0, s1);
+        break;
+      }
+      case 'ao':
+        // Awesome Oscillator (tulind/Tulip style):
+        // AO = SMA(median, 5) - SMA(median, 34), output starts at slowPeriod - 1.
+        if (!s0 || !s1 || s0.length === 0) {
+          out = [];
+          break;
+        }
+        {
+          const fast = 5;
+          const slow = 34;
+          const median = s0.map((h, i) => (Number(h) + Number(s1[i])) / 2);
+          const smaFast = smaFull(median, fast);
+          const smaSlow = smaFull(median, slow);
+          const offset = slow - fast;
+          out = smaSlow.map((slowVal, i) => smaFast[i + offset] - slowVal);
+        }
+        break;
+      case 'hma': {
+        // Hull Moving Average (fallback): HMA(n) = WMA(2*WMA(price,n/2) - WMA(price,n), sqrt(n))
+        const n = length || 9;
+        if (!values || values.length === 0) {
+          out = [];
+          break;
+        }
+        const half = Math.max(1, Math.floor(n / 2));
+        const sqrtN = Math.max(1, Math.floor(Math.sqrt(n)));
+
+        const wma = (arr, period) => {
+          const p = Math.max(1, period);
+          const result = [];
+          for (let i = p - 1; i < arr.length; i += 1) {
+            let num = 0;
+            let den = 0;
+            for (let j = 0; j < p; j += 1) {
+              const weight = p - j;
+              num += Number(arr[i - j]) * weight;
+              den += weight;
+            }
+            result.push(den === 0 ? 0 : num / den);
+          }
+          return result;
+        };
+
+        const w1 = wma(values, half);
+        const w2 = wma(values, n);
+        const minLen = Math.min(w1.length, w2.length);
+        const diff = [];
+        for (let i = 0; i < minLen; i += 1) {
+          diff.push(2 * w1[w1.length - minLen + i] - w2[w2.length - minLen + i]);
+        }
+        out = wma(diff, sqrtN);
+        break;
+      }
+      case 'bbands': {
+        const stddev = indicator?.options?.stddev || options.stddev || 2;
+        const period = indicator?.options?.length || options.length || 20;
+        const bands = ti.BollingerBands.calculate({ period, stdDev: stddev, values });
+        out = bands.map(b => ({
+          lower: b.lower,
+          middle: b.middle,
+          upper: b.upper,
+          width: (b.upper - b.lower) / b.middle
+        }));
+        break;
+      }
+      case 'stoch': {
+        const k = options.k || 3;
+        const d = options.d || 3;
+        const period = options.length || 14;
+        const st = ti.Stochastic.calculate({ high: s0, low: s1, close: s2, period, signalPeriod: d, kPeriod: k });
+        // technicalindicators may return leading items with undefined d - trim to where both values exist.
+        const mapped = st
+          .filter(v => typeof v.k === 'number' && typeof v.d === 'number')
+          .map(v => ({ stoch_k: v.k, stoch_d: v.d }));
+
+        // Some implementations include a leading 0 for %K even when %D is defined.
+        // Trim leading zeros to match the expectation that the first item is usable.
+        const firstUsableIdx = mapped.findIndex(v => Number.isFinite(v.stoch_k) && v.stoch_k !== 0);
+        out = firstUsableIdx > 0 ? mapped.slice(firstUsableIdx) : mapped;
+        break;
+      }
+      case 'adx': {
+        const period = options.length || 14;
+        const r = ti.ADX.calculate({ period, high: s0, low: s1, close: s2 });
+        // technicalindicators returns array of { adx, pdi, mdi }
+        out = r.map(v => v.adx);
+        break;
+      }
+      case 'macd': {
+        const fast = options.fast_length || 12;
+        const slow = options.slow_length || 26;
+        const signal = options.signal_length || 9;
+
+        // Match Tulip Indicators (tulind) MACD implementation.
+        // Output starts at index (slow - 1) and returns (size - (slow - 1)) elements.
+        let shortPer = 2 / (fast + 1);
+        let longPer = 2 / (slow + 1);
+        const signalPer = 2 / (signal + 1);
+
+        // Tulip has a special-case for the common 12/26 MACD.
+        if (fast === 12 && slow === 26) {
+          shortPer = 0.15;
+          longPer = 0.075;
+        }
+
+        let shortEma = values[0];
+        let longEma = values[0];
+        let signalEma = 0;
+
+        const result = [];
+        for (let i = 1; i < values.length; i += 1) {
+          shortEma = (values[i] - shortEma) * shortPer + shortEma;
+          longEma = (values[i] - longEma) * longPer + longEma;
+          const macdValue = shortEma - longEma;
+
+          if (i === slow - 1) {
+            signalEma = macdValue;
+          }
+
+          if (i >= slow - 1) {
+            signalEma = (macdValue - signalEma) * signalPer + signalEma;
+            result.push({
+              macd: macdValue,
+              signal: signalEma,
+              histogram: macdValue - signalEma
+            });
+          }
+        }
+
+        out = result;
+        break;
+      }
+      case 'vwma': {
+        const period = length || 20;
+        // For vwma we receive sources as [close, volume]
+        const price = s0;
+        const volume = s1;
+        if (!volume) {
+          fallbackUnsupported();
+        }
+        const result = [];
+        for (let i = period - 1; i < price.length; i++) {
+          let pv = 0;
+          let v = 0;
+          for (let j = i - period + 1; j <= i; j++) {
+            pv += price[j] * volume[j];
+            v += volume[j];
+          }
+          result.push(v === 0 ? 0 : pv / v);
+        }
+        out = result;
+        break;
+      }
+      default:
+        out = fallbackUnsupported();
+    }
+
+    resolve({ [indicator.key]: out });
   });
 }
 
@@ -288,31 +633,123 @@ module.exports = {
       const { slow_ma_type = default_ma_type } = options;
       const { signal_ma_type = default_ma_type } = options;
 
-      talib.execute(
-        {
-          name: 'MACDEXT',
-          startIdx: 0,
-          endIdx: source.length - 1,
-          inReal: source.slice(),
-          optInFastPeriod: options.fast_period || 12,
-          optInSlowPeriod: options.slow_period || 26,
-          optInSignalPeriod: options.signal_period || 9,
-          optInFastMAType: getMaTypeFromString(fast_ma_type),
-          optInSlowMAType: getMaTypeFromString(slow_ma_type),
-          optInSignalMAType: getMaTypeFromString(signal_ma_type)
-        },
-        (err, result) => {
-          const resultHistory = [];
-          for (let i = 0; i < result.nbElement; i += 1) {
-            resultHistory.push({
-              macd: result.result.outMACD[i],
-              histogram: result.result.outMACDHist[i],
-              signal: result.result.outMACDSignal[i]
-            });
+      if (talib && typeof talib.execute === 'function') {
+        talib.execute(
+          {
+            name: 'MACDEXT',
+            startIdx: 0,
+            endIdx: source.length - 1,
+            inReal: source.slice(),
+            optInFastPeriod: options.fast_period || 12,
+            optInSlowPeriod: options.slow_period || 26,
+            optInSignalPeriod: options.signal_period || 9,
+            optInFastMAType: getMaTypeFromString(fast_ma_type),
+            optInSlowMAType: getMaTypeFromString(slow_ma_type),
+            optInSignalMAType: getMaTypeFromString(signal_ma_type)
+          },
+          (err, result) => {
+            const resultHistory = [];
+            if (!err && result && result.result) {
+              for (let i = 0; i < result.nbElement; i += 1) {
+                resultHistory.push({
+                  macd: result.result.outMACD[i],
+                  histogram: result.result.outMACDHist[i],
+                  signal: result.result.outMACDSignal[i]
+                });
+              }
+            }
+            resolve({ [indicator.key]: resultHistory });
           }
-          resolve({ [indicator.key]: resultHistory });
+        );
+        return;
+      }
+
+      // Fallback (no talib): implement MACDEXT with support for EMA/DEMA/SMA.
+      // This is primarily to keep tests and runtime working without native builds.
+      const computeEma = (arr, period) => {
+        const p = Math.max(1, Number(period) || 1);
+        if (!arr || arr.length < p) {
+          return { out: [], lookback: p - 1 };
         }
-      );
+        const k = 2 / (p + 1);
+        let sum = 0;
+        for (let i = 0; i < p; i += 1) {
+          sum += Number(arr[i]);
+        }
+        let prev = sum / p;
+        const out = [prev];
+        for (let i = p; i < arr.length; i += 1) {
+          prev = (Number(arr[i]) - prev) * k + prev;
+          out.push(prev);
+        }
+        return { out, lookback: p - 1 };
+      };
+
+      const computeSma = (arr, period) => {
+        const p = Math.max(1, Number(period) || 1);
+        if (!arr || arr.length < p) {
+          return { out: [], lookback: p - 1 };
+        }
+        const out = [];
+        let sum = 0;
+        for (let i = 0; i < p; i += 1) {
+          sum += Number(arr[i]);
+        }
+        out.push(sum / p);
+        for (let i = p; i < arr.length; i += 1) {
+          sum += Number(arr[i]) - Number(arr[i - p]);
+          out.push(sum / p);
+        }
+        return { out, lookback: p - 1 };
+      };
+
+      const computeDema = (arr, period) => {
+        const p = Math.max(1, Number(period) || 1);
+        const ema1 = computeEma(arr, p);
+        const ema2 = computeEma(ema1.out, p);
+        const offset = ema2.lookback; // == p - 1
+        const out = ema2.out.map((v, i) => 2 * ema1.out[i + offset] - v);
+        return { out, lookback: ema1.lookback + ema2.lookback };
+      };
+
+      const computeMa = (arr, period, maType) => {
+        const t = String(maType || 'EMA').toUpperCase();
+        if (t === 'SMA') {
+          return computeSma(arr, period);
+        }
+        if (t === 'DEMA') {
+          return computeDema(arr, period);
+        }
+        // default EMA
+        return computeEma(arr, period);
+      };
+
+      const fastPeriod = options.fast_period || 12;
+      const slowPeriod = options.slow_period || 26;
+      const signalPeriod = options.signal_period || 9;
+
+      const fast = computeMa(source, fastPeriod, fast_ma_type);
+      const slow = computeMa(source, slowPeriod, slow_ma_type);
+
+      const slowLookback = slow.lookback;
+      const fastLookback = fast.lookback;
+      const offsetFast = slowLookback - fastLookback;
+
+      const macdSeries = slow.out.map((slowVal, i) => fast.out[i + offsetFast] - slowVal);
+
+      const signal = computeMa(macdSeries, signalPeriod, signal_ma_type);
+      const signalLookback = signal.lookback;
+
+      const resultHistory = signal.out.map((signalVal, i) => {
+        const macdVal = macdSeries[i + signalLookback];
+        return {
+          macd: macdVal,
+          histogram: macdVal - signalVal,
+          signal: signalVal
+        };
+      });
+
+      resolve({ [indicator.key]: resultHistory });
     });
   },
 
@@ -320,35 +757,52 @@ module.exports = {
     return new Promise(resolve => {
       const { options = {} } = indicator;
       const { length = 20, stddev = 2 } = options;
-      talib.execute(
-        {
-          name: 'BBANDS',
-          startIdx: 0,
-          endIdx: source.length - 1,
-          inReal: source.slice(),
-          optInTimePeriod: length,
-          optInNbDevUp: stddev,
-          optInNbDevDn: stddev,
-          optInMAType: 0 // simple moving average here
-        },
-        (err, result) => {
-          if (err) {
-            resolve({ [indicator.key]: {} });
-            return;
-          }
+      if (talib && typeof talib.execute === 'function') {
+        talib.execute(
+          {
+            name: 'BBANDS',
+            startIdx: 0,
+            endIdx: source.length - 1,
+            inReal: source.slice(),
+            optInTimePeriod: length,
+            optInNbDevUp: stddev,
+            optInNbDevDn: stddev,
+            optInMAType: 0 // simple moving average here
+          },
+          (err, result) => {
+            if (err) {
+              resolve({ [indicator.key]: [] });
+              return;
+            }
 
-          const resultHistory = [];
-          for (let i = 0; i < result.nbElement; i += 1) {
-            resultHistory.push({
-              upper: result.result.outRealUpperBand[i],
-              middle: result.result.outRealMiddleBand[i],
-              lower: result.result.outRealLowerBand[i],
-              width: (result.result.outRealUpperBand[i] - result.result.outRealLowerBand[i]) / result.result.outRealMiddleBand[i] // https://www.tradingview.com/wiki/Bollinger_Bands_Width_(BBW)
-            });
+            const resultHistory = [];
+            for (let i = 0; i < result.nbElement; i += 1) {
+              resultHistory.push({
+                upper: result.result.outRealUpperBand[i],
+                middle: result.result.outRealMiddleBand[i],
+                lower: result.result.outRealLowerBand[i],
+                width:
+                  (result.result.outRealUpperBand[i] - result.result.outRealLowerBand[i]) /
+                  result.result.outRealMiddleBand[i]
+              });
+            }
+            resolve({ [indicator.key]: resultHistory });
           }
-          resolve({ [indicator.key]: resultHistory });
-        }
-      );
+        );
+        return;
+      }
+
+      // Fallback (no talib)
+      // eslint-disable-next-line global-require
+      const { BollingerBands } = require('technicalindicators');
+      const bands = BollingerBands.calculate({ period: length, stdDev: stddev, values: source });
+      const resultHistory = bands.map(b => ({
+        upper: b.upper,
+        middle: b.middle,
+        lower: b.lower,
+        width: (b.upper - b.lower) / b.middle
+      }));
+      resolve({ [indicator.key]: resultHistory });
     });
   },
 

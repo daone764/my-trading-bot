@@ -11,7 +11,7 @@
     "ecmaVersion": 2022
   },
   "rules": {
-    "prettier/prettier": "error",
+    "prettier/prettier": ["error", { "endOfLine": "auto" }],
     "no-unused-vars": "warn",
     "no-console": "off",
     "func-names": "off",
@@ -25,6 +25,14 @@
     "no-plusplus": "off",
     "no-multi-assign": "off",
     "no-restricted-syntax": "off",
-    "guard-for-in": "off"
+    "guard-for-in": "off",
+
+    "no-param-reassign": "off",
+
+    "node/no-missing-require": "off",
+    "node/no-missing-import": "off",
+    "node/no-unpublished-require": "off",
+
+    "import/no-extraneous-dependencies": "off"
   }
 }
