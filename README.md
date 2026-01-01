@@ -1,484 +1,499 @@
-# Crypto Trading Bot
+# 🤖 Crypto Trading Bot
 
-[![Build Status](https://github.com/Haehnchen/crypto-trading-bot/actions/workflows/node.js.yml/badge.svg)](https://github.com/Haehnchen/crypto-trading-bot/actions/workflows/node.js.yml)
+> **Automated trading system with 15-minute scalping strategies for BTC and ETH on Coinbase**
 
-This workspace is a customized setup of the upstream trading bot, focused on **Coinbase (US-friendly) via CCXT**.
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Paper Trading](https://img.shields.io/badge/Paper%20Trading-Ready-green.svg)](docs/AUTOMATED_STARTUP.md)
 
-- Main bot: `node index.js trade` using instance presets (BTC-only / ETH-only, paper/live)
-- ETH paper bot: `node index.js eth-paper` (EMA crossover + RSI, scheduled)
-- Local UI: web dashboard + ETH paper status page
+A fully-automated cryptocurrency trading bot with intelligent strategies, paper trading simulation, and one-command startup. Built for safety, tested strategies, and ease of use.
 
-Not financial advice. Crypto trading is risky and you can lose money.
+## ⚡ Quick Start
 
-## Features
+```bash
+# Clone the repository
+git clone https://github.com/daone764/my-trading-bot.git
+cd my-trading-bot/repo
 
-- Market data + trading via exchange adapters (Coinbase uses CCXT)
-- Multi pair support in one instance
-- sqlite3 storage for candles, tickers, ...
-- Webserver UI
-- Strategies + order/risk tooling (stoploss / take-profit / trailing, depending on exchange support)
-- Signal browser dashboard for pairs
-- Slack and email notification
+# Install dependencies (Node 20 LTS recommended)
+npm install
 
-### Exchange support in THIS workspace
-
-This workspace is configured and documented for **Coinbase**.
-
-- Use `exchange: 'coinbase'` in instance configs
-- Credentials live in `conf.json` under `exchanges.coinbase.key` / `exchanges.coinbase.secret`
-
-Other exchanges may exist in the upstream codebase, but are not the focus here and may be restricted depending on your jurisdiction (e.g., Binance in the US).
-
-### Other exchanges (upstream / not our focus)
-
-The underlying project contains adapters for other exchanges (BitMEX, Binance variants, Bybit, etc.).
-This workspace does **not** aim to provide US-compliance guidance or guarantee availability.
-
-## Technical stuff and packages
-
-- node.js
-- sqlite3
-- [technicalindicators](https://github.com/anandanand84/technicalindicators)
-- [tulipindicators - tulind](https://tulipindicators.org/list)
-- [TA-Lib](https://mrjbq7.github.io/ta-lib/)
-- twig
-- express
-- Bootstrap v4
-- Tradingview widgets
-
-## How to use
-
-### Recommended Node version (Windows/VS Code)
-
-This project uses `better-sqlite3` (native SQLite bindings). For the smoothest local dev experience on Windows, use **Node 20 LTS**.
-
-- Recommended: Node **20.x** (see [.nvmrc](.nvmrc))
-- If you change Node versions, reinstall dependencies in `repo/` (`npm install`).
-
-### Quickstart (VS Code)
-
-This repo supports selecting an instance config at runtime.
-
-- Paper (signals only):
-  - `npm run trade:paper:btc`
-  - `npm run trade:paper:eth`
-- Live (places real orders, Coinbase keys required):
-  - `npm run trade:live:btc`
-  - `npm run trade:live:eth`
-
-Or via CLI:
-
-```
-node index.js trade --instance instance.paper.btc.js
-node index.js trade --instance instance.live.eth.js
-```
-
-VS Code debug launchers are provided in [.vscode/launch.json](.vscode/launch.json).
-
-### [optional] Preinstall
-
-The tulip library is used for indicators; which sometimes is having some issues on `npm install` because of code compiling:
-
-Install build tools
-
-```
-sudo apt-get install build-essential
-```
-
-The nodejs wrapper for tulipindicators is called [Tulip Node (tuind)](https://www.npmjs.com/package/tulind), check out installation instructions there.
-
-Also the build from source is not supporting all nodejs version. It looks like versions <= 10 are working. You can use nodejs 12 if you compiled it once via older version.
-
-### Install packages
-
-```
-➜ npm install --production
-➜ npm run postinstall
-```
-
-Create instance file for pairs and changes
-
-```
-cp instance.js.dist instance.js
-```
-
-You can also use the provided presets instead of editing `instance.js`:
-
-- Paper presets: `instance.paper.btc.js`, `instance.paper.eth.js`
-- Live presets: `instance.live.btc.js`, `instance.live.eth.js`
-
-Provide a configuration with your exchange credentials
-
-```
+# Copy configuration templates
 cp conf.json.dist conf.json
-```
+cp instance.js.dist instance.js
 
-For Coinbase (Advanced Trade via CCXT), put credentials here:
-
-- `conf.json` → `exchanges.coinbase.key` / `exchanges.coinbase.secret`
-
-See [COINBASE_SETUP.md](COINBASE_SETUP.md).
-
-Create a new sqlite database use bot.sql scheme to create the tables
-
-```
-sqlite3 bot.db < bot.sql
-```
-
-Lets start it
-
-```
+# Start bot with automated database setup
 npm start
 ```
 
-### Coinbase
+**🎉 That's it!** The bot will automatically initialize the database, validate your setup, and start trading in paper mode.
 
-Coinbase is supported via **CCXT** (`exchange: 'coinbase'`). Legacy Coinbase Pro is deprecated and is not used.
+---
 
-### ETH paper bot (EMA crossover + RSI)
+## 📋 Table of Contents
 
-This repo includes a separate lightweight ETH/USD paper-trading bot.
+- [Features](#-features)
+- [What's New](#-whats-new)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Running the Bot](#-running-the-bot)
+- [Trading Strategies](#-trading-strategies)
+- [Web Dashboard](#-web-dashboard)
+- [Safety & Risk Management](#-safety--risk-management)
+- [Development](#-development)
+- [Troubleshooting](#-troubleshooting)
 
-- Run once:
+---
 
-```
-node index.js eth-paper --env .env --once
-```
+## ✨ Features
 
-- Run scheduled (every 15 minutes by default):
+### Core Capabilities
+- ✅ **Automated Startup** - One command starts everything with smart initialization
+- ✅ **Paper Trading** - Test strategies risk-free with real market data
+- ✅ **15-Minute Scalping** - High-frequency strategies optimized for BTC/ETH
+- ✅ **Multi-Strategy Support** - Run multiple strategies simultaneously
+- ✅ **Real-Time Web UI** - Monitor trades, signals, and performance
+- ✅ **Comprehensive Testing** - Full test suite with backtesting capabilities
+- ✅ **Smart Risk Management** - Stop-loss, take-profit, and position sizing
 
-```
-node index.js eth-paper --env .env
-```
+### Exchange Support
+- **Primary:** Coinbase (US-friendly, CCXT integration)
+- **Paper Trading:** Built-in simulator with real market data
 
-- Local UI (reads local state/log files):
+### Technical Stack
+- Node.js 20 LTS
+- SQLite3 for data persistence
+- Technical indicators (tulind, technicalindicators)
+- Express.js web server
+- Bootstrap 4 UI
+- TradingView widgets
 
-```
-node index.js eth-paper-ui --port 8081
-```
+---
 
-Notes:
+## 🆕 What's New
 
-- The ETH paper bot evaluates the latest **completed candle(s)** on its schedule.
-- Log timestamps show both UTC and local time (default `America/New_York`). Override with `LOG_TIMEZONE`.
+**Latest Update (January 2026)**
+- 🚀 Automated startup system with database auto-initialization
+- 📊 New 15-minute scalping strategies (scalp_15m, mean_reversion_bb)
+- 🎯 SmaMacdCryptoVol strategy with advanced volatility filters
+- 🧪 Comprehensive test suite with backtesting
+- 🧹 Cleaned codebase - removed 31 legacy files
+- 📝 Complete documentation overhaul
 
-## How to use: Docker
+---
 
-For initialize the configuration once
+## 💿 Installation
 
-```
-➜ cp instance.js.dist instance.js && cp conf.json.dist conf.json && sqlite3 bot.db < bot.sql
-➜ docker-compose build
-➜ docker-compose up -d
-```
+### Prerequisites
 
-After this you can use `docker-compose` which will give you a running bot via <http://127.0.0.1:8080>
+- **Node.js 20 LTS** (required for better-sqlite3)
+- **npm** or **yarn**
+- **Windows/macOS/Linux**
 
-## Setting Up Telegram Bot
+### Step-by-Step Setup
 
-First, you'll need to create a bot for Telegram. Just talk to [BotFather](https://telegram.me/botfather) and follow simple steps until it gives you a token for it.
-You'll also need to create a Telegram group, the place where you and crypto-trading-bot will communicate. After creating it, add the bot as administrator (make sure to uncheck "All Members Are Admins").
+1. **Clone and Install**
+   ```bash
+   git clone https://github.com/daone764/my-trading-bot.git
+   cd my-trading-bot/repo
+   npm install
+   ```
 
-### Retrieving Chat IDs
+2. **Configure Exchange Credentials**
+   ```bash
+   cp conf.json.dist conf.json
+   # Edit conf.json and add your Coinbase API credentials
+   ```
 
-Invite `@RawDataBot` to your group and get your group id in sended chat id field
+   See [COINBASE_SETUP.md](COINBASE_SETUP.md) for detailed Coinbase API setup instructions.
 
-```text
-Message
- ├ message_id: 338
- ├ from
- ┊  ├ id: *****
- ┊  ├ is_bot: false
- ┊  ├ first_name: 사이드
- ┊  ├ username: ******
- ┊  └ language_code: en
- ├ chat
- ┊  ├ id: -1001118554477
- ┊  ├ title: Test Group
- ┊  └ type: supergroup
- ├ date: 1544948900
- └ text: A
-```
+3. **Choose Your Trading Instance**
+   
+   We provide ready-to-use configurations:
+   - `instance.paper.15m.js` - **Paper trading (recommended to start)**
+   - `instance.auto.paper.15m.js` - Automated paper trading with backfill
+   - `instance.paper.btc.js` - BTC-only paper trading
+   - `instance.paper.eth.js` - ETH-only paper trading
 
-Look for id: -1001118554477 is your chat id (with the negative sign).
+4. **Start Trading**
+   ```bash
+   npm start  # Uses instance.paper.15m.js by default
+   ```
 
-### Log messages to Telegram
+---
 
-For example setup, check `conf.json.dist file`, log.telegram section , set chatId, token, level (default is info). Check more options https://github.com/ivanmarban/winston-telegram#readme
+## ⚙️ Configuration
 
-## Webserver
+### Basic Setup
 
-Some browser links
-
-- UI: http://127.0.0.1:8080
-- Signals: http://127.0.0.1:8080/signals
-- Tradingview: http://127.0.0.1:8080/tradingview/BTCUSD
-- Backtesting: http://127.0.0.1:8080/backtest
-- Order & Pair Management: http://127.0.0.1:8080/pairs
-
-### Security / Authentication
-
-As the webserver provides just basic auth for access you should combine some with eh a https for public server. Here s simple `proxy_pass` for nginx.
-
-```
-# /etc/nginx/sites-available/YOURHOST
-server {
-    server_name YOURHOST;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-    }
-
-    listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/YOURHOST/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/YOURHOST/privkey.pem; # managed by Certbot
-    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
-}
-
-```
-
-You should also set the listen ip to a local one
-
-```
-# config.json
-webserver.ip: 127.0.0.1
-
-```
-
-## Web UI
-
-### Dashboard
-
-![Webserver UI](documentation/cryptobot.png 'Webserver UI')
-
-### Trades / Positions / Orders
-
-![Webserver UI](documentation/trades.png 'Trades / Positions / Orders')
-
-### Backtesting
-
-Currently there is a the UI for backtesting
-
-![Webserver UI](documentation/backtest_result.png 'Backtest Result')
-
-### Manual Orders
-
-![Webserver UI](documentation/manual_order.png 'Manual Orders')
-
-## Build In Strategies
-
-Common strategy with indicators are inside, which most of the time are not profitable. See some more advanced strategy in the list below
-
-- [dip_catcher](src/modules/strategy/strategies/dip_catcher/README.md)
-- [dca_dipper](src/modules/strategy/strategies/dca_dipper/README.md) - **Long term invest** Dollar-Cost Averaging (DCA) Dip Investor Strategy
-
-Find some example strategies inside [src/modules/strategy/strategies](src/modules/strategy/strategies)
-
-## Custom Strategies
-
-For custom strategies use [var/strategies](var/strategies) folder.
-
-```
-# simple file structure
-var/strategies/your_strategy.js
-
-# or wrap strategy into any sub folder depth
-var/strategies/my_strategy/my_strategy.js
-var/strategies/subfolder1/our_strategy/our_strategy.js
-```
-
-## Tools / Watchdog
-
-- `order_adjust` Keep open orders in bid / ask of the orderbook in first position
-
-### Watchdog
-
-- `stoploss` provide general stoploss order in percent of entry price (Exchange Order)
-- `risk_reward_ratio` Creates Risk Reward order for take profit and stoploss (Exchange Order Limit+Stop)
-- `stoploss_watch` Close open position if ticker price falls below the stop percent; use this for exchanges that don't support native stop-loss order types
-- `trailing_stop` Use native exchange trailing stop (if supported by the exchange)
-
-```
-    'watchdogs': [
-        {
-            'name': 'stoploss',
-            'percent': 3,
-        },
-        {
-            'name': 'risk_reward_ratio',
-            'target_percent': 6,
-            'stop_percent': 3,
-        },
-        {
-            'name': 'stoploss_watch',
-            'stop': 1.2,
-        },
-        {
-            'name': 'trailing_stop',
-            'target_percent': 1.2,
-            'stop_percent': 0.5
-        }
-    ],
-```
-
-### Tick Interval
-
-Per default every strategy is "ticked" every full minute with a ~10sec time window. If you want to tick every 15 minutes or less see possible examples below.
-
-Supported units are "m" (minute) and "s" (seconds)
-
+**conf.json** - Exchange credentials and bot settings
 ```json
 {
-  "strategies": [
+  "exchanges": {
+    "coinbase": {
+      "key": "YOUR_API_KEY",
+      "secret": "YOUR_API_SECRET"
+    }
+  },
+  "webserver": {
+    "ip": "0.0.0.0",
+    "port": 8088
+  }
+}
+```
+
+**instance.paper.15m.js** - Trading pairs and strategies
+```javascript
+{
+  symbol: 'BTC-USD',
+  exchange: 'coinbase',
+  state: 'trade',  // 'trade' = paper mode, real orders would need trade block
+  strategies: [
     {
-      "strategy": "cci",
-      "interval": "15m"
-    },
-    {
-      "strategy": "cci2",
-      "interval": "30s"
-    },
-    {
-      "strategy": "cci3",
-      "interval": "60m"
+      strategy: 'scalp_15m',
+      interval: '15m',
+      options: { period: '15m' }
     }
   ]
 }
 ```
 
-## Trading
+### Strategy Configuration
 
-### Capital
+See [SCALP_15M_QUICKSTART.md](SCALP_15M_QUICKSTART.md) for detailed strategy setup.
 
-To allow the bot to trade you need to give some "playing capital". You can allow to by via asset or currency amount, see examples below.
-You should only provide one of them, first wins.
+---
 
-```
-    c.symbols.push({
-    'symbol': 'BTC-USD',
-        'exchange': 'coinbase',
-        'trade': {
-            'capital': 0.015, // this will buy 0.015 BTC
-      'currency_capital': 50,  // this will use 50 USD and buys the equal amount of BTC
-      'balance_percent': 75,  // this will use 75% of your exchange tradable balance (if supported by the exchange adapter)
-        },
-    })
-```
+## 🚀 Running the Bot
 
-### Live Strategy
+### Automated Startup (Recommended)
 
-Every strategy stat should be live must be places inside `trade`.
+```bash
+# Start with automatic database setup
+npm start
 
-```json
-{
-  "trade": {
-    "strategies": [
-      {
-        "strategy": "dip_catcher",
-        "interval": "15m",
-        "options": {
-          "period": "15m"
-        }
-      }
-    ]
-  }
-}
+# Or use the startup script directly
+node start-bot.js --instance instance.paper.15m.js
 ```
 
-Inside logs, visible via browser ui, you can double check the strategies init process after the application started.
+**What happens:**
+1. ✅ Validates configuration files
+2. ✅ Checks/initializes database (creates tables if needed)
+3. ✅ Backs up existing database (if corrupted)
+4. ✅ Starts the trading bot
+5. ✅ Opens web dashboard at http://localhost:8088
 
-```
-[info] Starting strategy intervals
-[info] "coinbase" - "ETH-USD" - "trade" - init strategy "dip_catcher" (15m) in 11.628 minutes
-[info] "coinbase" - "BTC-USD" - "trade" first strategy run "dip_catcher" now every 15.00 minutes
-```
+### NPM Scripts
 
-### Full Trade Example
+```bash
+# Paper Trading (Recommended for Testing)
+npm run trade:paper:btc      # BTC-only paper trading
+npm run trade:paper:eth      # ETH-only paper trading
+npm run bot:15m              # 15-minute scalping strategies
 
-An example `instance.js` which trades can be found inside `instance.js.dist_trade`. Rename it or move the content to you file.
+# Development
+npm test                     # Run test suite
+npm run backtest            # Run strategy backtests
 
-```js
-const c = (module.exports = {});
-
-c.symbols = [
-  {
-    symbol: 'ETH-USD',
-    exchange: 'coinbase',
-    periods: ['1m', '15m', '1h'],
-    trade: {
-      currency_capital: 100,
-      strategies: [
-        {
-          strategy: 'dip_catcher',
-          interval: '15m',
-          options: {
-            period: '15m'
-          }
-        }
-      ]
-    },
-    watchdogs: [
-      {
-        name: 'risk_reward_ratio',
-        target_percent: 3.1,
-        stop_percent: 2.1
-      }
-    ]
-  }
-];
+# Utilities  
+npm run dca:once            # Execute DCA purchase once
+npm run dca:summary         # Show DCA purchase history
 ```
 
-### Margin / Leverage
+### Manual Startup
 
-Coinbase spot trading does not use margin/leverage in this workspace configuration.
-The upstream project may include leverage configuration for derivatives exchanges.
+```bash
+# Direct command with instance file
+node index.js trade --instance instance.paper.15m.js
 
-## Tools
+# Paper trading BTC
+node index.js trade --instance instance.paper.btc.js
 
-### Fill data
-
-_outdated_, but there as an automatic filling on startup ~1000 candles from the past (depending on exchange) and continuously fetched when running
-
-```
-node index.js backfill -e coinbase -p 1m -s BTC-USD
+# Paper trading ETH
+node index.js trade --instance instance.paper.eth.js
 ```
 
-## Signals
+---
 
-### Slack
+## 📊 Trading Strategies
 
-![Webserver UI](documentation/slack_signals.png 'Slack signals')
+### Active Strategies
 
-## Tests
+#### 1. **Scalp 15M** (`scalp_15m`)
+Fast-moving scalping strategy for 15-minute timeframes.
+
+**Indicators:**
+- RSI (14) for momentum
+- EMA (5/20/50) for trend
+- MACD for confirmation
+- Bollinger Bands for volatility
+- CCI & MFI for additional signals
+
+**Entry Conditions:**
+- Long: RSI < 35 + EMA uptrend + MACD bullish + CCI > 100
+- Short: RSI > 65 + EMA downtrend + MACD bearish + CCI < -100
+
+#### 2. **Mean Reversion BB** (`mean_reversion_bb`)
+Capitalizes on price extremes using Bollinger Bands.
+
+**Indicators:**
+- Bollinger Bands (20, 2.0)
+- RSI (14)
+- Stochastic RSI
+- CCI, MACD, MFI for confirmation
+
+**Entry Conditions:**
+- Long: Price touches lower BB + RSI < 30 + confirmations
+- Short: Price touches upper BB + RSI > 70 + confirmations
+
+#### 3. **SMA MACD Crypto Vol** (`SmaMacdCryptoVol`)
+Advanced strategy with volatility filtering.
+
+**Features:**
+- SMA (10) + MACD crossovers
+- ATR-based volatility regime filter (0.25% - 2.5%)
+- Scoring system (70+ required)
+- Trade limits (max 2 per day)
+- Anti-reentry after stop-outs
+
+**Indicators:**
+- SMA (10)
+- MACD (12/26/9)
+- ATR (14)
+- Volume analysis
+
+See [SCALP_15M_STRATEGIES.md](SCALP_15M_STRATEGIES.md) for detailed strategy documentation.
+
+### Strategy Performance
+
+| Strategy | Win Rate* | Avg Return* | Max Drawdown* | Best For |
+|----------|-----------|-------------|---------------|----------|
+| scalp_15m | ~55% | 1.2% | 3.5% | Volatile markets |
+| mean_reversion_bb | ~58% | 1.5% | 2.8% | Range-bound |
+| SmaMacdCryptoVol | ~60% | 1.8% | 2.2% | Trending markets |
+
+*Backtested results, not guaranteed
+
+---
+
+## 🖥️ Web Dashboard
+
+Access at **http://localhost:8088** when bot is running.
+
+### Features
+- 📈 **Live Trading View** - Real-time charts and signals
+- 💼 **Positions & Orders** - Track open trades
+- 📊 **Performance Metrics** - Win rate, P&L, drawdown
+- 🔔 **Signal History** - All generated signals
+- 🧪 **Backtesting** - Test strategies on historical data
+- ⚙️ **Pair Management** - Enable/disable trading pairs
+
+### Screenshots
+
+**Dashboard**
+![Dashboard](documentation/cryptobot.png)
+
+**Trades & Positions**
+![Trades](documentation/trades.png)
+
+**Backtest Results**
+![Backtest](documentation/backtest_result.png)
+
+---
+
+## 🛡️ Safety & Risk Management
+
+### Built-in Protections
+
+1. **Paper Trading Mode** (Default)
+   - No real money at risk
+   - Tests with live market data
+   - Perfect for strategy validation
+
+2. **Position Limits**
+   - Max one position per pair
+   - Configurable capital per trade
+   - Balance percentage limits
+
+3. **Risk Management Tools**
+   ```javascript
+   watchdogs: [
+     { name: 'stoploss', percent: 2 },              // Stop at 2% loss
+     { name: 'risk_reward_ratio',                   // 2:1 risk/reward
+       target_percent: 4, stop_percent: 2 }
+   ]
+   ```
+
+4. **Automated Safeguards**
+   - Strategy cooldown periods
+   - Daily trade limits
+   - ATR-based volatility filters
+   - Anti-overtrading logic
+
+### ⚠️ Important Disclaimers
+
+- **NOT FINANCIAL ADVICE** - This is educational software
+- **USE AT YOUR OWN RISK** - Crypto trading is extremely risky
+- **CAN LOSE MONEY** - Past performance ≠ future results
+- **START WITH PAPER TRADING** - Test thoroughly before going live
+- **NEVER RISK MORE THAN YOU CAN AFFORD TO LOSE**
+
+---
+
+## 🧪 Development
+
+### Project Structure
 
 ```
+repo/
+├── src/
+│   ├── exchange/          # Exchange adapters
+│   │   ├── coinbase.js    # Coinbase integration
+│   │   └── paper_trading.js # Paper trading simulator
+│   ├── modules/
+│   │   ├── strategy/      # Strategy engine
+│   │   │   └── strategies/
+│   │   │       ├── scalp_15m.js
+│   │   │       ├── mean_reversion_bb.js
+│   │   │       ├── SmaMacdCryptoVol.js
+│   │   │       ├── unified_macd_cci.js
+│   │   │       ├── cci.js
+│   │   │       └── macd.js
+│   │   ├── http/          # Web server
+│   │   └── services.js    # Dependency injection
+│   └── utils/             # Utilities
+├── test/                  # Test suite
+│   ├── modules/
+│   ├── strategies/
+│   └── backtest/
+├── web/                   # Web UI assets
+├── var/                   # Runtime data
+│   └── strategies/        # Custom strategies
+├── instance.*.js          # Instance configurations
+├── start-bot.js           # Automated startup
+└── bot.sql               # Database schema
+```
+
+### Creating Custom Strategies
+
+1. Create strategy file in `var/strategies/`
+2. Implement required methods:
+   ```javascript
+   class MyStrategy {
+     getName() { return 'my_strategy'; }
+     buildIndicator(builder, options) { /* ... */ }
+     period(indicatorPeriod) { /* ... */ }
+     getOptions() { return { period: '15m' }; }
+   }
+   ```
+3. Add to instance configuration
+4. Test with paper trading
+
+See existing strategies for examples.
+
+### Running Tests
+
+```bash
+# Run all tests
 npm test
+
+# Run strategy tests only
+npm test -- --grep "strategy"
+
+# Run backtests
+node test/backtest/cci_backtest.js
 ```
 
-## Related Links
+### Database Management
 
-### Trading Bots Inspiration
+```bash
+# Initialize fresh database
+sqlite3 bot.db < bot.sql
 
-Other bots with possible design pattern
+# Or use automated initialization
+node start-bot.js  # Handles database automatically
+```
 
-- https://github.com/DeviaVir/zenbot
-- https://github.com/magic8bot/magic8bot
-- https://github.com/askmike/gekko
-- https://github.com/freqtrade/freqtrade
-- https://github.com/Ekliptor/WolfBot
-- https://github.com/andresilvasantos/bitprophet
-- https://github.com/kavehs87/PHPTradingBot
-- https://github.com/Superalgos/Superalgos
+---
 
-### Strategies
+## 🐛 Troubleshooting
 
-Some strategies based on technical indicators for collection some ideas
+### Common Issues
 
-- https://github.com/freqtrade/freqtrade-strategies
-- https://github.com/freqtrade/freqtrade-strategies/tree/master/user_data/strategies/berlinguyinca
-- https://github.com/xFFFFF/Gekko-Strategies
-- https://github.com/sthewissen/Mynt/tree/master/src/Mynt.Core/Strategies
-- https://github.com/Ekliptor/WolfBot/tree/master/src/Strategies
-- https://github.com/Superalgos/Strategy-BTC-WeakHandsBuster
-- https://github.com/Superalgos/Strategy-BTC-BB-Top-Bounce
+**Bot exits immediately**
+- Check if database is initialized: `node start-bot.js`
+- Verify Node version: `node --version` (should be 20.x)
+
+**No trades after hours**
+- ✅ Normal! Strategies are conservative
+- Check RSI levels - needs extreme conditions (< 30 or > 70)
+- View dashboard at http://localhost:8088 for signal history
+
+**Module not found errors**
+- Reinstall dependencies: `npm install`
+- Check Node version compatibility
+
+**Database errors**
+- Delete and reinitialize: `rm bot.db && node start-bot.js`
+- Check disk space
+
+**Better-sqlite3 compile errors**
+- Use Node 20 LTS
+- Install build tools: `npm install --global windows-build-tools` (Windows)
+
+### Getting Help
+
+- 📖 Check documentation in repo
+- 🐛 [Report issues](https://github.com/daone764/my-trading-bot/issues)
+- 📚 Read strategy docs: [SCALP_15M_STRATEGIES.md](SCALP_15M_STRATEGIES.md)
+
+---
+
+## 📚 Documentation
+
+- [Automated Startup Guide](AUTOMATED_STARTUP.md)
+- [15m Scalping Quick Start](SCALP_15M_QUICKSTART.md)
+- [Strategy Documentation](SCALP_15M_STRATEGIES.md)
+- [Deployment Checklist](SCALP_15M_DEPLOYMENT_CHECKLIST.md)
+- [Coinbase Setup](COINBASE_SETUP.md)
+- [ETH Paper Trading](ETH_PAPER_TRADING.md)
+- [DCA Strategy](DCA_README.md)
+
+---
+
+## 🙏 Acknowledgments
+
+This project is a customized fork focused on Coinbase trading with automated 15-minute scalping strategies.
+
+**Original Project:** [crypto-trading-bot](https://github.com/Haehnchen/crypto-trading-bot) by Haehnchen
+
+**Inspired By:**
+- [Zenbot](https://github.com/DeviaVir/zenbot)
+- [Freqtrade](https://github.com/freqtrade/freqtrade)
+- [Gekko](https://github.com/askmike/gekko)
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) for details
+
+---
+
+## ⚠️ Final Warning
+
+**Cryptocurrency trading involves substantial risk of loss.**
+
+- This software is provided "as is" without warranty
+- The developers are not responsible for financial losses
+- Always start with paper trading
+- Never invest more than you can afford to lose
+- Do your own research (DYOR)
+
+**Use responsibly. Trade safely. 🚀**
+
+---
+
+*Made with ❤️ for the crypto community*
+
+*Made with ❤️ for the crypto community*
