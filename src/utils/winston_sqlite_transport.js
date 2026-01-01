@@ -28,11 +28,18 @@ module.exports = class WinstonSqliteTransport extends Transport {
       created_at: Math.floor(Date.now() / 1000)
     };
 
-    this.db
-      .prepare(
-        `INSERT INTO ${this.table}(uuid, level, message, created_at) VALUES ($uuid, $level, $message, $created_at)`
-      )
-      .run(parameters);
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO ${this.table}(uuid, level, message, created_at) VALUES ($uuid, $level, $message, $created_at)`
+        )
+        .run(parameters);
+    } catch (e) {
+      // Silently fail if logs table doesn't exist yet - DB will be initialized
+      if (!e.message.includes('no such table')) {
+        console.error('Error writing to logs table:', e.message);
+      }
+    }
 
     callback();
   }

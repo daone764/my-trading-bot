@@ -206,7 +206,9 @@ module.exports = class Http {
         const Sqlite = require('better-sqlite3');
         const dbPath = path.join(this.projectDir, 'bot.db');
         if (!fs.existsSync(dbPath)) return [];
-        const db = Sqlite(dbPath);
+        const db = new Sqlite(dbPath, { readonly: true, timeout: 5000 });
+        db.pragma('busy_timeout = 5000;');
+        db.pragma('journal_mode = WAL');
         const signals = db.prepare('SELECT * FROM signals ORDER BY income_at DESC LIMIT 20').all();
         db.close();
         return signals.map(s => ({

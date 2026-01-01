@@ -85,9 +85,11 @@
     "url": "https://github.com/Haehnchen/crypto-trading-bot.git"
   },
   "scripts": {
-    "start": "node index.js trade",
-    "trade:paper:btc": "node index.js trade --instance instance.paper.btc.js",
-    "trade:paper:eth": "node index.js trade --instance instance.paper.eth.js",
+    "start": "node start-bot.js",
+    "bot": "node start-bot.js",
+    "bot:15m": "node start-bot.js instance.paper.15m.js",
+    "trade:paper:btc": "node start-bot.js instance.paper.btc.js",
+    "trade:paper:eth": "node start-bot.js instance.paper.eth.js",
     "trade:live:btc": "node index.js trade --instance instance.live.btc.js",
     "trade:live:eth": "node index.js trade --instance instance.live.eth.js",
     "server:paper:btc": "node index.js server --instance instance.paper.btc.js",
@@ -98,7 +100,10 @@
     "dca": "node src/command/dca.js schedule",
     "dca:once": "node src/command/dca.js once",
     "dca:summary": "node src/command/dca_summary.js",
-    "dca:export": "node src/command/dca_summary.js export"
+    "dca:export": "node src/command/dca_summary.js export",
+    "auto:paper": "node start-bot.js instance.auto.paper.15m.js",
+    "auto:live": "node auto-start.js",
+    "backfill": "node index.js backfill"
   },
   "devDependencies": {
     "eslint": "^8.27.0",

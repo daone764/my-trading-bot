@@ -62,8 +62,7 @@ const Coinbase = require('../exchange/coinbase');
 const Bitfinex = require('../exchange/bitfinex');
 const Bybit = require('../exchange/bybit');
 const BybitUnified = require('../exchange/bybit_unified');
-const Noop = require('../exchange/noop');
-
+const Noop = require('../exchange/noop');const PaperTrading = require('../exchange/paper_trading');
 const ExchangeCandleCombine = require('../modules/exchange/exchange_candle_combine');
 const CandleExportHttp = require('../modules/system/candle_export_http');
 const CandleImporter = require('../modules/system/candle_importer');
@@ -200,9 +199,31 @@ module.exports = {
       );
     }
     myDb.pragma('journal_mode = WAL');
-
     myDb.pragma('SYNCHRONOUS = 1;');
-    myDb.pragma('LOCKING_MODE = EXCLUSIVE;');
+    myDb.pragma('busy_timeout = 5000;');
+    myDb.pragma('LOCKING_MODE = NORMAL;');
+
+    // Initialize database schema if needed
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      // Check if candlesticks table exists
+      const tableCheck = myDb.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='candlesticks'"
+      ).get();
+      
+      if (!tableCheck) {
+        // Schema doesn't exist, initialize it
+        const sqlPath = path.join(__dirname, '../../bot.sql');
+        const sqlContent = fs.readFileSync(sqlPath, 'utf8');
+        myDb.exec(sqlContent);
+        console.log('✓ Database schema initialized');
+      }
+    } catch (e) {
+      console.error('Warning: Could not initialize database schema:', e.message);
+      // Don't throw - let it continue and fail naturally if needed
+    }
 
     return (db = myDb);
   },
@@ -249,7 +270,7 @@ module.exports = {
       return candleStickImporter;
     }
 
-    return (candleStickImporter = new CandleImporter(this.getCandlestickRepository()));
+    return (candleStickImporter = new CandleImporter(this.getCandlestickRepository(), this.getLogger()));
   },
 
   getCreateOrderListener: function() {
@@ -741,7 +762,14 @@ module.exports = {
         this.getCandleImporter(),
         this.getThrottler()
       ),
-      new Noop()
+      new Noop(),
+      new PaperTrading(
+        this.getEventEmitter(),
+        this.getLogger(),
+        this.getCandlestickResample(),
+        this.getQueue(),
+        this.getCandleImporter()
+      )
     ]);
   },
 

@@ -20,7 +20,7 @@ c.symbols.push({
   symbol: 'ETH-USD',
   periods: ['1m', '15m', '1h'],  // Need 1h for MACD regime, 15m for CCI entries
   exchange: 'coinbase',
-  state: 'watch',  // 'watch' = signals only, change to 'trade' for live
+  state: 'trade',  // 'trade' = paper trading with simulated orders
   strategies: [
     { 
       strategy: 'unified_macd_cci', 

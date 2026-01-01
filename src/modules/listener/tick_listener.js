@@ -188,92 +188,108 @@ module.exports = class TickListener {
     this.logger.info(`Starting strategy intervals`);
 
     const me = this;
-
-    const types = [
-      {
-        name: 'watch',
-        items: this.instances.symbols.filter(sym => sym.strategies && sym.strategies.length > 0)
-      },
-      {
-        name: 'trade',
-        items: this.instances.symbols.filter(
-          sym => sym.trade && sym.trade.strategies && sym.trade.strategies.length > 0
-        )
+    
+    try {
+      // Debug: log what we have
+      if (!this.instances || !this.instances.symbols) {
+        me.logger.error(`ERROR: instances or instances.symbols is missing! instances=${JSON.stringify(this.instances)}`);
+        return;
       }
-    ];
+      
+      me.logger.info(`Found ${this.instances.symbols.length} total symbols in config`);
 
-    types.forEach(type => {
-      me.logger.info(`Strategy: "${type.name}" found "${type.items.length}" valid symbols`);
-
-      type.items.forEach(symbol => {
-        // map strategies
-        let strategies = [];
-        if (type.name === 'watch') {
-          strategies = symbol.strategies;
-        } else if (type.name === 'trade') {
-          strategies = symbol.trade.strategies;
+      const types = [
+        {
+          name: 'watch',
+          items: this.instances.symbols.filter(sym => sym.strategies && sym.strategies.length > 0)
+        },
+        {
+          name: 'trade',
+          items: this.instances.symbols.filter(
+            sym => sym.trade && sym.trade.strategies && sym.trade.strategies.length > 0
+          )
         }
+      ];
 
-        strategies.forEach(strategy => {
-          let myInterval = '1m';
+      types.forEach(type => {
+        me.logger.info(`Strategy: "${type.name}" found "${type.items.length}" valid symbols`);
 
-          if (strategy.interval) {
-            myInterval = strategy.interval;
-          } else {
-            const strategyInstance = me.strategyManager.findStrategy(strategy.strategy);
-            if (typeof strategyInstance.getTickPeriod === 'function') {
-              myInterval = strategyInstance.getTickPeriod();
-            }
+        type.items.forEach(symbol => {
+          // map strategies
+          let strategies = [];
+          if (type.name === 'watch') {
+            strategies = symbol.strategies;
+          } else if (type.name === 'trade') {
+            strategies = symbol.trade.strategies;
           }
 
-          const [timeout, interval] = me.getFirstTimeoutAndInterval(myInterval);
+          strategies.forEach(strategy => {
+            let myInterval = '1m';
 
-          // random add 5-15 sec to init start for each to not run all at same time
-          const timeoutWindow = timeout + (Math.floor(Math.random() * 9000) + 5000);
-
-          me.logger.info(
-            `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" - init strategy "${
-              strategy.strategy
-            }" (${myInterval}) in ${(timeoutWindow / 60 / 1000).toFixed(3)} minutes`
-          );
-
-          const strategyIntervalCallback = async () => {
-            /*
-            // logging can be high traffic on alot of pairs
-            me.logger.debug(
-              `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" strategy running "${strategy.strategy}"`
-            );
-            */
-
-            if (type.name === 'watch') {
-              await me.visitStrategy(strategy, symbol);
-            } else if (type.name === 'trade') {
-              await me.visitTradeStrategy(strategy, symbol);
+            if (strategy.interval) {
+              myInterval = strategy.interval;
+            } else if (strategy.options && strategy.options.period) {
+              // Use the configured period from strategy options
+              myInterval = strategy.options.period;
             } else {
-              throw new Error(`Invalid strategy type${type.name}`);
+              const strategyInstance = me.strategyManager.findStrategy(strategy.strategy);
+              if (typeof strategyInstance.getTickPeriod === 'function') {
+                myInterval = strategyInstance.getTickPeriod();
+              }
             }
-          };
 
-          setTimeout(() => {
+            const [timeout, interval] = me.getFirstTimeoutAndInterval(myInterval);
+
+            // random add 5-15 sec to init start for each to not run all at same time
+            const timeoutWindow = timeout + (Math.floor(Math.random() * 9000) + 5000);
+
             me.logger.info(
-              `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" first strategy run "${
+              `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" - init strategy "${
                 strategy.strategy
-              }" now every ${(interval / 60 / 1000).toFixed(2)} minutes`
+              }" (${myInterval}) in ${(timeoutWindow / 60 / 1000).toFixed(3)} minutes`
             );
 
-            // first run call
-            setTimeout(async () => {
-              await strategyIntervalCallback();
-            }, 1000 + Math.floor(Math.random() * (800 - 300 + 1)) + 100);
+            const strategyIntervalCallback = async () => {
+              /*
+              // logging can be high traffic on alot of pairs
+              me.logger.debug(
+                `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" strategy running "${strategy.strategy}"`
+              );
+              */
 
-            // continuous run
-            setInterval(async () => {
-              await strategyIntervalCallback();
-            }, interval);
-          }, timeoutWindow);
+              if (type.name === 'watch') {
+                await me.visitStrategy(strategy, symbol);
+              } else if (type.name === 'trade') {
+                await me.visitTradeStrategy(strategy, symbol);
+              } else {
+                throw new Error(`Invalid strategy type${type.name}`);
+              }
+            };
+
+            setTimeout(() => {
+              me.logger.info(
+                `"${symbol.exchange}" - "${symbol.symbol}" - "${type.name}" first strategy run "${
+                  strategy.strategy
+                }" now every ${(interval / 60 / 1000).toFixed(2)} minutes`
+              );
+
+              // first run call
+              setTimeout(async () => {
+                await strategyIntervalCallback();
+              }, 1000 + Math.floor(Math.random() * (800 - 300 + 1)) + 100);
+
+              // continuous run
+              setInterval(async () => {
+                await strategyIntervalCallback();
+              }, interval);
+            }, timeoutWindow);
+          });
         });
       });
-    });
+    } catch (e) {
+      me.logger.error(`ERROR in startStrategyIntervals: ${e.message}`, e);
+      console.error('ERROR in startStrategyIntervals:', e);
+    }
   }
 
   getFirstTimeoutAndInterval(period) {
@@ -285,6 +301,9 @@ module.exports = class TickListener {
         break;
       case 'm':
         myUnit = 60;
+        break;
+      case 'h':
+        myUnit = 3600; // 60 * 60 seconds in an hour
         break;
       default:
         throw Error(`Unsupported period unit: ${period}`);

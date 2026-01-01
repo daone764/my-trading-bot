@@ -1,135 +1,131 @@
 const assert = require('assert');
 const CCI = require('../../../../src/modules/strategy/strategies/cci');
-const IndicatorBuilder = require('../../../../src/modules/strategy/dict/indicator_builder');
-const IndicatorPeriod = require('../../../../src/modules/strategy/dict/indicator_period');
-const StrategyContext = require('../../../../src/dict/strategy_context');
-const Ticker = require('../../../../src/dict/ticker');
 
-describe('#strategy cci', () => {
-  it('cci indicator builder', async () => {
-    const indicatorBuilder = new IndicatorBuilder();
-    const macd = new CCI();
-
-    macd.buildIndicator(indicatorBuilder, { period: '15m' });
-    assert.equal(3, indicatorBuilder.all().length);
+describe('#CCI strategy', () => {
+  it('should give a long signal', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [101, 102, 103, 104, 105, 106, 107, 108, -151, -101, -99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112]
+    );
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), 'long');
+    assert.strictEqual(result.getDebug()['trigger swing value'], -151);
   });
 
-  it('strategy cci short', async () => {
-    const cci = new CCI();
-
-    const result = await cci.period(
-      new IndicatorPeriod(createStrategyContext(394), {
-        sma200: [500, 400, 300],
-        ema200: [500, 400, 300],
-        cci: [90, 100, 110, 130, 150, 180, 200, 220, 280, 220, 200, 180, 150, 130, 90, 80]
-      })
+  it('should give a short signal', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [-101, -102, -103, -104, -105, -106, -107, -108, 151, 101, 99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88]
     );
-
-    assert.equal('short', result.getSignal());
-    assert.equal(280, result.getDebug()._trigger);
-
-    const result2 = await cci.period(
-      new IndicatorPeriod(createStrategyContext(394), {
-        sma200: [500, 400],
-        ema200: [500, 400],
-        cci: [80, 90, 100, 110, 130, 150, 180, 190, 199, 180, 150, 130, 90, 80]
-      })
-    );
-
-    assert.equal(undefined, result2.getSignal());
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), 'short');
+    assert.strictEqual(result.getDebug()['trigger swing value'], 151);
   });
 
-  it('strategy cci long', async () => {
-    const cci = new CCI();
-
-    const result = await cci.period(
-      new IndicatorPeriod(createStrategyContext(404), {
-        sma200: [550, 400, 388],
-        ema200: [550, 400, 388],
-        cci: [-80, -90, -100, -110, -130, -150, -180, -200, -220, -280, -220, -200, -180, -150, -130, -90, -80]
-      })
+  it('should give a close long signal', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 101, 99, 0],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      'long'
     );
-
-    assert.equal('long', result.getSignal());
-    assert.equal(-280, result.getDebug()._trigger);
-
-    const result2 = await cci.period(
-      new IndicatorPeriod(createStrategyContext(404), {
-        sma200: [500, 400, 388],
-        ema200: [500, 400, 388],
-        cci: [-80, -90, -100, -110, -130, -150, -180, -190, -199, -180, -150, -130, -90, -80]
-      })
-    );
-
-    assert.equal(undefined, result2.getSignal());
-
-    const result3 = await cci.period(
-      new IndicatorPeriod(createStrategyContext(404), {
-        sma200: [900, 900, 900],
-        ema200: [500, 400, 388],
-        cci: [-80, -90, -100, -110, -130, -150, -180, -200, -220, -280, -220, -200, -180, -150, -130, -90, -80]
-      })
-    );
-
-    assert.equal('long', result3.getSignal());
-    assert.equal(-280, result3.getDebug()._trigger);
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), 'close');
   });
 
-  it('strategy cci long [close]', async () => {
-    const cci = new CCI();
-
-    const strategyContext = createStrategyContext(404);
-    strategyContext.lastSignal = 'long';
-
-    const result = await cci.period(
-      new IndicatorPeriod(strategyContext, {
-        sma200: [550, 400, 388],
-        ema200: [550, 400, 388],
-        cci: [120, 80, -1]
-      })
+  it('should give a close short signal', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, -101, -99, 0],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      'short'
     );
-
-    assert.equal('close', result.getSignal());
-
-    const result2 = await cci.period(
-      new IndicatorPeriod(strategyContext, {
-        sma200: [550, 400, 388],
-        ema200: [550, 400, 388],
-        cci: [120, 150, -1]
-      })
-    );
-
-    assert.equal(undefined, result2.getSignal());
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), 'close');
   });
 
-  it('strategy cci short [close]', async () => {
-    const cci = new CCI();
-
-    const strategyContext = createStrategyContext(404);
-    strategyContext.lastSignal = 'short';
-
-    const result = await cci.period(
-      new IndicatorPeriod(strategyContext, {
-        sma200: [550, 400, 388],
-        ema200: [550, 400, 388],
-        cci: [-120, -80, 1]
-      })
+  it('should not give a signal if trend filter fails for long', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [101, 102, 103, 104, 105, 106, 107, 108, -151, -101, -99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88]
     );
-
-    assert.equal('close', result.getSignal());
-
-    const result2 = await cci.period(
-      new IndicatorPeriod(strategyContext, {
-        sma200: [550, 400, 388],
-        ema200: [550, 400, 388],
-        cci: [-120, -150, -1]
-      })
-    );
-
-    assert.equal(undefined, result2.getSignal());
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), undefined);
   });
 
-  let createStrategyContext = price => {
-    return new StrategyContext({}, new Ticker('goo', 'goo', 'goo', price));
-  };
+  it('should not give a signal if trend filter fails for short', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [-101, -102, -103, -104, -105, -106, -107, -108, 151, 101, 99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112]
+    );
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), undefined);
+  });
+
+  it('should not give a signal if cci swing is not deep enough', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [101, 102, 103, 104, 105, 106, 107, 108, -149, -101, -99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112]
+    );
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), undefined);
+  });
+
+  it('should not reopen long position', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [101, 102, 103, 104, 105, 106, 107, 108, -151, -101, -99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112],
+      'long'
+    );
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), undefined);
+  });
+
+  it('should not reopen short position', () => {
+    const strategy = new CCI();
+    const mockPeriod = createMockIndicatorPeriod(
+      [-101, -102, -103, -104, -105, -106, -107, -108, 151, 101, 99, 0],
+      [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+      [99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88],
+      'short'
+    );
+    
+    const result = strategy.period(mockPeriod);
+    assert.strictEqual(result.getSignal(), undefined);
+  });
 });
+
+function createMockIndicatorPeriod(cci, ema200, prices, lastSignal = undefined) {
+  return {
+    getIndicator: (name) => {
+      if (name === 'cci') return cci;
+      if (name === 'ema200') return ema200;
+      return [];
+    },
+    getPrice: () => prices[prices.length - 2],
+    getLookbacks: () => prices.map(p => ({ close: p })),
+    getLastSignal: () => lastSignal
+  };
+}

@@ -53,6 +53,9 @@ module.exports = class UnifiedMacdCci {
     // Risk management state
     this.lastLossBar = null;
     this.barsSinceEntry = 0;
+
+    // Per-candle evaluation lock
+    this.lastEvaluatedCandleTs = null;
     
     // ========================================
     // STRATEGY PARAMETERS (constants)
@@ -138,6 +141,16 @@ module.exports = class UnifiedMacdCci {
    * @returns {SignalResult|undefined} - Trading signal or undefined
    */
   async period(indicatorPeriod, options) {
+    const blockers = {
+      candleNotClosed: false,
+      duplicateEvaluation: false,
+      cooldownActive: false,
+      positionOpen: false,
+      noRegime: false,
+      noExtreme: false,
+      volatilityTooHigh: false
+    };
+
     // ========================================
     // EXTRACT INDICATOR VALUES
     // ========================================
@@ -154,6 +167,31 @@ module.exports = class UnifiedMacdCci {
     if (!this.validateIndicators(macd1h, hma1h, sma200_1h, cci15m, atr15m, candles15m)) {
       return SignalResult.createEmptySignal({ error: 'Insufficient indicator data' });
     }
+
+    // Use the last fully closed 15m candle (second from the end)
+    const closedCandle = candles15m[candles15m.length - 2];
+    const formingCandle = candles15m[candles15m.length - 1];
+    const closedTs = closedCandle?.time || closedCandle?.t || closedCandle?.timestamp || closedCandle?.date;
+
+    if (!closedTs) {
+      blockers.candleNotClosed = true;
+      return this.logAndReturn('NO_TRADE', blockers, { reason: 'missing_candle_ts' });
+    }
+
+    // Guard against evaluating incomplete candles
+    const candleFlag = closedCandle.isClosed === false || closedCandle.isFinal === false;
+    const formingIsSame = formingCandle && (formingCandle.time || formingCandle.t) === closedTs;
+    if (candleFlag || formingIsSame) {
+      blockers.candleNotClosed = true;
+      return this.logAndReturn('NO_TRADE', blockers, { reason: 'candle_not_closed', candleTs: closedTs });
+    }
+
+    // Per-candle single evaluation lock
+    if (this.lastEvaluatedCandleTs === closedTs) {
+      blockers.duplicateEvaluation = true;
+      return this.logAndReturn('NO_TRADE', blockers, { reason: 'duplicate_candle', candleTs: closedTs });
+    }
+    this.lastEvaluatedCandleTs = closedTs;
 
     // Get current values (remove incomplete candle by using slice -2)
     const currentMacd = macd1h.slice(-2)[0];
@@ -177,6 +215,7 @@ module.exports = class UnifiedMacdCci {
     // DEBUG INFO (always included in signal)
     // ========================================
     const debug = {
+      candle_ts: closedTs,
       regime: this.currentRegime,
       macd_histogram: currentMacd?.histogram,
       hma_vs_sma: currentHma - currentSma200_1h,
@@ -194,11 +233,53 @@ module.exports = class UnifiedMacdCci {
       cci_extreme_reached: this.cciReachedExtreme
     };
 
-    // ========================================
-    // CONSOLE LOGGING (for debugging)
-    // ========================================
-    const timestamp = new Date().toISOString().slice(11, 19);
-    console.log(`[${timestamp}] UNIFIED: price=$${currentPrice?.toFixed(0)} | regime=${this.currentRegime} | CCI=${currentCci?.toFixed(1)} | MACD_hist=${currentMacd?.histogram?.toFixed(4)} | HMA-SMA=${(currentHma - currentSma200_1h)?.toFixed(0)} | extreme=${this.cciReachedExtreme}`);
+    // External execution helper (logging + gating per candle)
+    // Single-guard evaluation: only once per closed candle with indicators
+    const helperDecision = safeEvaluateUnifiedStrategy(
+      {
+        indicators: {
+          CCI: currentCci,
+          MACD_histogram: currentMacd?.histogram,
+          HMA_SMA: currentHma - currentSma200_1h,
+          extreme: this.cciReachedExtreme
+        },
+        close: currentPrice,
+        timestamp: closedTs,
+        isClosed: true
+      },
+      {
+        currentPosition: lastSignal ? { size: 1, side: lastSignal } : { size: 0, side: null },
+        currentRegime: this.currentRegime,
+        lastEvaluatedCandleTs: this.lastEvaluatedCandleTs,
+        cooldownBars:
+          this.lastLossBar !== null
+            ? Math.max(0, this.COOLDOWN_BARS_AFTER_LOSS - (this.barsSinceEntry - this.lastLossBar))
+            : 0
+      }
+    );
+
+    // helper may return undefined if skipped by guard
+    if (!helperDecision) {
+      return SignalResult.createEmptySignal({ reason: 'helper_skipped' });
+    }
+
+    this.currentRegime = helperDecision.newRegime;
+    this.lastEvaluatedCandleTs = helperDecision.blockers.duplicateEvaluation ? this.lastEvaluatedCandleTs : closedTs;
+
+    // If a hard blocker fired, stop here
+    const helperHardBlock =
+      helperDecision.blockers.cooldownActive ||
+      helperDecision.blockers.positionOpen ||
+      helperDecision.blockers.volatilityTooHigh;
+
+    // Keep informational blocker flags
+    blockers.noExtreme = helperDecision.blockers.noExtreme;
+    blockers.noRegime = helperDecision.blockers.noRegime;
+    blockers.volatilityTooHigh = helperDecision.blockers.volatilityTooHigh;
+
+    if (helperHardBlock) {
+      return this.logAndReturn('NO_TRADE', { ...blockers, ...helperDecision.blockers }, debug);
+    }
 
     // ========================================
     // STEP 1: DETERMINE CURRENT REGIME
@@ -213,6 +294,7 @@ module.exports = class UnifiedMacdCci {
     // STEP 2: CHECK EXIT CONDITIONS (if in position)
     // ========================================
     if (lastSignal === 'long' || lastSignal === 'short') {
+      blockers.positionOpen = true;
       this.barsSinceEntry++;
       
       const exitSignal = this.checkExitConditions(
@@ -228,7 +310,7 @@ module.exports = class UnifiedMacdCci {
         // Reset position state on exit
         this.resetPositionState();
         this.currentRegime = newRegime;
-        return exitSignal;
+        return this.logAndReturn('EXIT', blockers, debug, exitSignal);
       }
       
       // Check for partial TP1 hit (just update state, don't close entire position)
@@ -241,13 +323,16 @@ module.exports = class UnifiedMacdCci {
     // ========================================
     // STEP 3: CHECK ENTRY CONDITIONS (if flat)
     // ========================================
-    if (!lastSignal || lastSignal === 'close') {
+    const helperAllowsEntry = helperDecision.action === 'ENTER_LONG' || helperDecision.action === 'ENTER_SHORT';
+
+    if ((!lastSignal || lastSignal === 'close') && helperAllowsEntry) {
       // Check cooldown after loss
       if (this.lastLossBar !== null) {
         const barsSinceLoss = this.barsSinceEntry - this.lastLossBar;
         if (barsSinceLoss < this.COOLDOWN_BARS_AFTER_LOSS) {
           debug.cooldown_remaining = this.COOLDOWN_BARS_AFTER_LOSS - barsSinceLoss;
-          return SignalResult.createEmptySignal(debug);
+          blockers.cooldownActive = true;
+          return this.logAndReturn('NO_TRADE', blockers, debug);
         }
         this.lastLossBar = null;  // Cooldown complete
       }
@@ -266,11 +351,16 @@ module.exports = class UnifiedMacdCci {
       );
       
       if (entrySignal) {
-        return entrySignal;
+        return this.logAndReturn(entrySignal.getSignal() === 'long' ? 'ENTER_LONG' : 'ENTER_SHORT', blockers, debug, entrySignal);
       }
     }
 
-    return SignalResult.createEmptySignal(debug);
+    // Explicit blockers for common cases
+    if (this.currentRegime === 'none') blockers.noRegime = true;
+    if (!this.cciReachedExtreme) blockers.noExtreme = true; // informational only; not a blocker
+    if (debug.entry_blocked === 'volatility_too_high') blockers.volatilityTooHigh = true;
+
+    return this.logAndReturn('NO_TRADE', blockers, debug);
   }
 
   /**
@@ -337,12 +427,6 @@ module.exports = class UnifiedMacdCci {
       return null;
     }
 
-    // Must have reached extreme first
-    if (!this.cciReachedExtreme) {
-      debug.entry_blocked = 'no_extreme';
-      return null;
-    }
-
     // Volatility filter: ATR must be reasonable
     if (atr > atrSma * this.ATR_VOLATILITY_FILTER) {
       debug.entry_blocked = 'volatility_too_high';
@@ -402,6 +486,33 @@ module.exports = class UnifiedMacdCci {
     }
 
     return null;
+  }
+
+  logAndReturn(action, blockers, debug, signal) {
+    const log = {
+      action,
+      candleTs: debug.candle_ts,
+      price: debug.price,
+      regime: debug.regime,
+      newRegime: debug.new_regime,
+      indicators: {
+        cci: debug.cci,
+        macd_histogram: debug.macd_histogram,
+        hma_vs_sma: debug.hma_vs_sma
+      },
+      blockers,
+      entry_blocked: debug.entry_blocked,
+      exit_reason: debug.exit_reason,
+      cooldown_remaining: debug.cooldown_remaining
+    };
+
+    console.log('UNIFIED_DECISION', JSON.stringify(log));
+
+    if (signal) {
+      return signal;
+    }
+
+    return SignalResult.createEmptySignal(debug);
   }
 
   /**
@@ -616,3 +727,103 @@ module.exports = class UnifiedMacdCci {
     ];
   }
 };
+
+// ================= UNIFIED STRATEGY MODULE =================
+// Handles MACD + HMA-SMA + CCI signals with proper execution gating
+
+function safeEvaluateUnifiedStrategy(candle, state) {
+  // Only run on closed candles with indicators
+  if (!candle || !candle.isClosed || !candle.indicators) return;
+
+  // Verify indicators actually have data
+  const { CCI, MACD_histogram, HMA_SMA } = candle.indicators;
+  if (CCI === undefined || MACD_histogram === undefined || HMA_SMA === undefined) return;
+
+  const candleTs = candle.timestamp;
+
+  // Prevent duplicate evaluation per candle
+  if (state.lastEvaluatedCandleTs === candleTs) return;
+
+  // Call final evaluator
+  const decision = evaluateUnifiedStrategy(candle, state);
+
+  return decision;
+}
+
+function evaluateUnifiedStrategy(candle, state) {
+  // --- Initialize state ---
+  state.currentPosition = state.currentPosition || { size: 0, side: null };
+  state.currentRegime = state.currentRegime || 'none';
+  state.lastEvaluatedCandleTs = state.lastEvaluatedCandleTs || null;
+
+  // --- Skip evaluation if candle not ready ---
+  if (!candle.isClosed || !candle.indicators) return;
+
+  const candleTs = candle.timestamp;
+  const price = candle.close;
+  const { CCI, MACD_histogram, HMA_SMA, extreme } = candle.indicators;
+
+  // --- Prevent duplicate evaluation per candle ---
+  if (state.lastEvaluatedCandleTs === candleTs) return;
+  state.lastEvaluatedCandleTs = candleTs;
+
+  // --- Hard blockers ---
+  const candleNotClosed = false; // already ensured above
+  const duplicateEvaluation = false; // handled by lock
+  const cooldownActive = state.cooldownBars > 0;
+  const positionOpen = state.currentPosition.size > 0;
+  const volatilityTooHigh = false; // optional: implement if needed
+
+  // --- Informational blockers ---
+  const noExtreme = !extreme;
+  const noRegime = false; // updated below if regime not detected
+
+  const blockers = {
+    candleNotClosed,
+    duplicateEvaluation,
+    cooldownActive,
+    positionOpen,
+    noRegime,
+    noExtreme,
+    volatilityTooHigh
+  };
+
+  // --- Determine regime ---
+  let newRegime = 'none';
+  if (MACD_histogram > 0 && HMA_SMA >= 0) {
+    newRegime = 'long';
+  } else if (MACD_histogram < 0 && HMA_SMA < 0) {
+    newRegime = 'short';
+  } else {
+    blockers.noRegime = true;
+  }
+
+  // --- Decide action based on hard blockers ---
+  const hardBlockers = [cooldownActive, positionOpen, volatilityTooHigh];
+  let action = 'NO_TRADE';
+
+  if (!hardBlockers.some(Boolean) && newRegime !== 'none') {
+    action = 'ENTER_' + newRegime.toUpperCase();
+  }
+
+  // --- Log structured decision ---
+  console.log(
+    'UNIFIED_DECISION',
+    JSON.stringify({
+      candleTs,
+      price,
+      regime: state.currentRegime,
+      newRegime,
+      indicators: { CCI, MACD_histogram, HMA_SMA },
+      blockers,
+      action
+    })
+  );
+
+  // --- Update current regime state ---
+  state.currentRegime = newRegime;
+
+  return { action, blockers, newRegime };
+}
+
+// ================= END MODULE =================

@@ -9,6 +9,7 @@ instance.js
 bot.db
 bot.db-shm
 bot.db-wal
+bot.db.backup.*
 node_modules
 
 # Runtime state and process files
@@ -26,11 +27,23 @@ eth.paper.env
 logs/
 *.log
 
-# Temporary files
+# Temporary/debug files
 temp_bot.sql
 _dashboard_log.txt
+bot_status.txt
+candle_check.txt
+paper_trade_debug.txt
 *.tmp
 *.swp
 *~
 *.tgz
 *.tar.gz
+
+# Test/debug scripts
+test_*.js
+check_*.js
+show_*.js
+verify_*.js
+debug-*.js
+auto-start.js
+init_db.js

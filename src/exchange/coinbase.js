@@ -35,6 +35,85 @@ module.exports = class Coinbase {
     return 'coinbase';
   }
 
+  async backfill(symbol, period, start) {
+    // Initialize ccxt client if not already done
+    if (!this.ccxtClient) {
+      const clientRaw = new ccxt.coinbase({
+        enableRateLimit: true
+      });
+      this.ccxtClient = this.createCcxtProxy(clientRaw);
+    }
+
+    const ccxtSymbol = this.toCcxtSymbol(symbol);
+    const since = moment(start).valueOf();
+    
+    try {
+      const ohlcvs = await this.ccxtClient.fetchOHLCV(ccxtSymbol, period, since, 500);
+      
+      return ohlcvs.map(candle => ({
+        time: Math.round(candle[0] / 1000),
+        open: candle[1],
+        high: candle[2],
+        low: candle[3],
+        close: candle[4],
+        volume: candle[5]
+      }));
+    } catch (e) {
+      this.logger.error(`Coinbase: backfill error for ${symbol} ${period}: ${String(e)}`);
+      return [];
+    }
+  }
+
+  async autoBackfillGaps(symbol, period) {
+    try {
+      // Get latest candle from database
+      const lastCandle = await this.candleImporter.getLastCandleForSymbol(this.getName(), symbol, period);
+      
+      if (!lastCandle) {
+        // No data in DB, backfill initial dataset
+        const daysToBackfill = period === '1h' ? 10 : 3;
+        this.logger.info(`Coinbase: No historical data for ${symbol} ${period}, backfilling ${daysToBackfill} days...`);
+        
+        const start = moment().subtract(daysToBackfill, 'days');
+        const candles = await this.backfill(symbol, period, start);
+        
+        if (candles.length > 0) {
+          const exchangeCandlesticks = candles.map(candle => {
+            return ExchangeCandlestick.createFromCandle(this.getName(), symbol, period, candle);
+          });
+          await this.candleImporter.insertCandles(exchangeCandlesticks);
+          this.logger.info(`Coinbase: Backfilled ${candles.length} candles for ${symbol} ${period}`);
+        }
+        return;
+      }
+
+      // Calculate gap between last candle and now
+      const lastCandleTime = moment.unix(lastCandle.time);
+      const now = moment();
+      const hoursDiff = now.diff(lastCandleTime, 'hours');
+      
+      // If gap is > 2 hours, backfill it
+      if (hoursDiff > 2) {
+        const daysToBackfill = Math.ceil(hoursDiff / 24) + 1; // Add 1 day buffer
+        this.logger.info(`Coinbase: Gap detected for ${symbol} ${period} (${hoursDiff}h), backfilling ${daysToBackfill} days...`);
+        
+        const candles = await this.backfill(symbol, period, lastCandleTime);
+        
+        if (candles.length > 0) {
+          const exchangeCandlesticks = candles.map(candle => {
+            return ExchangeCandlestick.createFromCandle(this.getName(), symbol, period, candle);
+          });
+          await this.candleImporter.insertCandles(exchangeCandlesticks);
+          this.logger.info(`Coinbase: Backfilled ${candles.length} candles to close gap for ${symbol} ${period}`);
+        }
+      } else {
+        this.logger.info(`Coinbase: Data up to date for ${symbol} ${period} (last: ${lastCandleTime.fromNow()})`);
+      }
+    } catch (e) {
+      this.logger.error(`Coinbase: Auto-backfill error for ${symbol} ${period}: ${String(e)}`);
+    }
+  }
+
   isInverseSymbol(symbol) {
     return false;
   }
@@ -213,6 +292,15 @@ module.exports = class Coinbase {
       });
     }, 1000 * 10);
     this.intervals.push(tickerInterval);
+
+    // Auto-detect gaps and backfill missing data for each configured timeframe.
+    symbols.forEach(symbol => {
+      symbol.periods.forEach(period => {
+        me.queue.add(async () => {
+          await me.autoBackfillGaps(symbol.symbol, period);
+        });
+      });
+    });
 
     // Initial candles prefill for each configured timeframe.
     symbols.forEach(symbol => {

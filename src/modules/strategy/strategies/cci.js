@@ -7,107 +7,92 @@ module.exports = class CCI {
 
   buildIndicator(indicatorBuilder, options) {
     if (!options.period) {
-      throw 'Invalid period';
+      throw new Error('Invalid period');
     }
 
     indicatorBuilder.add('cci', 'cci', options.period);
-
-    indicatorBuilder.add('sma200', 'sma', options.period, {
-      length: 200
-    });
-
     indicatorBuilder.add('ema200', 'ema', options.period, {
       length: 200
     });
   }
 
   period(indicatorPeriod) {
-    return this.cci(
-      indicatorPeriod.getPrice(),
-      indicatorPeriod.getIndicator('sma200'),
-      indicatorPeriod.getIndicator('ema200'),
-      indicatorPeriod.getIndicator('cci'),
-      indicatorPeriod.getLastSignal()
-    );
-  }
+    const cci = indicatorPeriod.getIndicator('cci');
+    const ema200 = indicatorPeriod.getIndicator('ema200');
+    const lastSignal = indicatorPeriod.getLastSignal();
 
-  async cci(price, sma200Full, ema200Full, cciFull, lastSignal) {
-    if (
-      !cciFull ||
-      !sma200Full ||
-      !ema200Full ||
-      cciFull.length <= 0 ||
-      sma200Full.length < 2 ||
-      ema200Full.length < 2
-    ) {
-      return;
+    // Guard against insufficient indicator history
+    if (!cci || !ema200 || cci.length < 11 || ema200.length < 2) {
+      return SignalResult.createEmptySignal();
     }
 
-    // remove incomplete candle
-    const sma200 = sma200Full.slice(0, -1);
-    const ema200 = ema200Full.slice(0, -1);
-    const cci = cciFull.slice(0, -1);
+    // Normalize CCI values (handle both raw numbers and objects with value property)
+    const cciValues = cci.map(c => (typeof c === 'object' && c.value !== undefined) ? c.value : c);
+    const ema200Values = ema200.map(e => (typeof e === 'object' && e.value !== undefined) ? e.value : e);
+
+    // Always ignore the currently forming candle (use the last closed candle)
+    const currentCci = cciValues[cciValues.length - 2];
+    const previousCci = cciValues[cciValues.length - 3];
+    const currentEma200 = ema200Values[ema200Values.length - 2];
+
+    // Get current price from lookbacks, ignoring the forming candle
+    const lookbacks = indicatorPeriod.getLookbacks();
+    if (!lookbacks || lookbacks.length < 2) {
+      return SignalResult.createEmptySignal();
+    }
+    const currentPrice = lookbacks[lookbacks.length - 2].close;
 
     const debug = {
-      sma200: sma200.slice(-1)[0],
-      ema200: ema200.slice(-1)[0],
-      cci: cci.slice(-1)[0]
+      price: currentPrice,
+      cci: currentCci,
+      ema200: currentEma200,
+      'trigger swing value': null
     };
 
-    const before = cci.slice(-2)[0];
-    const last = cci.slice(-1)[0];
+    // Trend Filter
+    const isLongAllowed = currentPrice > currentEma200;
+    const isShortAllowed = currentPrice < currentEma200;
 
-    // trend change
+    // EXIT LOGIC
+    // Exit LONG when: Previous CCI > +100 AND current CCI < +100
+    if (lastSignal === 'long' && previousCci > 100 && currentCci < 100) {
+      return SignalResult.createSignal('close', { ...debug, reason: 'exit long' });
+    }
+
+    // Exit SHORT when: Previous CCI < -100 AND current CCI > -100
+    if (lastSignal === 'short' && previousCci < -100 && currentCci > -100) {
+      return SignalResult.createSignal('close', { ...debug, reason: 'exit short' });
+    }
+
+    // ENTRY LOGIC
+    // Get last 10 closed candles (excluding the forming candle)
+    const cciLookback = cciValues.slice(-12, -2);
+
+    // LONG: Previous CCI < -100, Current CCI > -100, Lowest CCI in last 10 <= -150
     if (
-      (lastSignal === 'long' && before > 100 && last < 100) ||
-      (lastSignal === 'short' && before < -100 && last > -100)
+      isLongAllowed &&
+      lastSignal !== 'long' &&
+      previousCci < -100 &&
+      currentCci > -100
     ) {
-      return SignalResult.createSignal('close', debug);
+      const lowestCci = Math.min(...cciLookback);
+      if (lowestCci <= -150) {
+        debug['trigger swing value'] = lowestCci;
+        return SignalResult.createSignal('long', { ...debug, reason: 'enter long' });
+      }
     }
 
-    let long = price >= sma200.slice(-1)[0];
-
-    // ema long
-    if (!long) {
-      long = price >= ema200.slice(-1)[0];
-    }
-
-    const count = cci.length - 1;
-
-    if (long) {
-      // long
-
-      if (before <= -100 && last >= -100) {
-        let rangeValues = [];
-
-        for (let i = count - 1; i >= 0; i--) {
-          if (cci[i] >= -100) {
-            rangeValues = cci.slice(i, count);
-            break;
-          }
-        }
-
-        const min = Math.min(...rangeValues);
-        if (min <= -200) {
-          debug._trigger = min;
-          return SignalResult.createSignal('long', debug);
-        }
-      }
-    } else if (before >= 100 && last <= 100) {
-      const count = cci.length - 1;
-      let rangeValues = [];
-
-      for (let i = count - 1; i >= 0; i--) {
-        if (cci[i] <= 100) {
-          rangeValues = cci.slice(i, count);
-          break;
-        }
-      }
-
-      const max = Math.max(...rangeValues);
-      if (max >= 200) {
-        debug._trigger = max;
-        return SignalResult.createSignal('short', debug);
+    // SHORT: Previous CCI > +100, Current CCI < +100, Highest CCI in last 10 >= +150
+    if (
+      isShortAllowed &&
+      lastSignal !== 'short' &&
+      previousCci > 100 &&
+      currentCci < 100
+    ) {
+      const highestCci = Math.max(...cciLookback);
+      if (highestCci >= 150) {
+        debug['trigger swing value'] = highestCci;
+        return SignalResult.createSignal('short', { ...debug, reason: 'enter short' });
       }
     }
 
@@ -121,6 +106,14 @@ module.exports = class CCI {
         value: 'cci',
         type: 'oscillator',
         range: [100, -100]
+      },
+      {
+        label: 'ema200',
+        value: 'ema200'
+      },
+      {
+        label: 'Swing',
+        value: 'trigger swing value'
       }
     ];
   }
@@ -131,3 +124,4 @@ module.exports = class CCI {
     };
   }
 };
+

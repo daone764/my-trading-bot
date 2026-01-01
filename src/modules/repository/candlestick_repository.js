@@ -116,4 +116,21 @@ module.exports = class CandlestickRepository {
       resolve();
     });
   }
+
+  getLastCandleForSymbol(exchange, symbol, period) {
+    return new Promise(resolve => {
+      const stmt = this.db.prepare(
+        'SELECT * from candlesticks WHERE exchange = ? AND symbol = ? AND period = ? ORDER BY time DESC LIMIT 1'
+      );
+
+      const row = stmt.get([exchange, symbol, period]);
+      
+      if (!row) {
+        resolve(null);
+        return;
+      }
+
+      resolve(new Candlestick(row.time, row.open, row.high, row.low, row.close, row.volume));
+    });
+  }
 };

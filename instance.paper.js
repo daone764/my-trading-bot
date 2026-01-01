@@ -14,7 +14,7 @@ c.symbols = [];
     symbol: pair,
     periods: ['1m', '15m', '1h'],
     exchange: 'coinbase',
-    state: 'watch',
+    state: 'trade', // Paper trading with simulated orders
     strategies: [
       {
         strategy: 'cci',

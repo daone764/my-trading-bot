@@ -48,6 +48,13 @@ module.exports = class IndicatorPeriod {
     return undefined;
   }
 
+  getLookbacks() {
+    if (this.strategyContext && typeof this.strategyContext.getLookbacks === 'function') {
+      return this.strategyContext.getLookbacks();
+    }
+    return [];
+  }
+
   /**
    * Generate to iterate over item, starting with latest one going to oldest.
    * You should "break" the iteration until you found what you needed
